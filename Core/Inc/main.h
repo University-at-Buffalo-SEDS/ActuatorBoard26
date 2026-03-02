@@ -57,6 +57,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define STEPPER_CTRL_Pin GPIO_PIN_1
+#define STEPPER_CTRL_GPIO_Port GPIOB
+#define STEPPER_DIR_Pin GPIO_PIN_2
+#define STEPPER_DIR_GPIO_Port GPIOB
+#define GREEN_LED_Pin GPIO_PIN_15
+#define GREEN_LED_GPIO_Port GPIOA
+#define NITROUS_PIN_Pin GPIO_PIN_3
+#define NITROUS_PIN_GPIO_Port GPIOB
+#define NITROGEN_PIN_Pin GPIO_PIN_4
+#define NITROGEN_PIN_GPIO_Port GPIOB
+#define IGNITER_PIN_Pin GPIO_PIN_7
+#define IGNITER_PIN_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

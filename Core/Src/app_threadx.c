@@ -64,19 +64,12 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
 {
   UINT ret = TX_SUCCESS;
   /* USER CODE BEGIN App_ThreadX_MEM_POOL */
-  if (init_telemetry_router() != SEDS_OK) {
-    Error_Handler();
-  }
-  /* Log after router is initialized, before threads start */
-
-  char started_txt[] = "Starting Threadx Scheduler";
-  log_telemetry_synchronous(SEDS_DT_MESSAGE_DATA, started_txt,
-                                  sizeof(started_txt), 1);
+   TX_BYTE_POOL *byte_pool = (TX_BYTE_POOL*)memory_ptr;
 
   /* USER CODE END App_ThreadX_MEM_POOL */
 
   /* USER CODE BEGIN App_ThreadX_Init */
-  create_telemetry_thread();
+  create_telemetry_thread(byte_pool);
 
   /* USER CODE END App_ThreadX_Init */
 

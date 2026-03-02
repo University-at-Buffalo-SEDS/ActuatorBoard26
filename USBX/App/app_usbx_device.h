@@ -27,6 +27,9 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "ux_api.h"
+#include "ux_device_descriptors.h"
+#include "ux_device_cdc_acm.h"
+#include "ux_dcd_stm32.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -39,7 +42,7 @@ extern "C" {
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
-#define USBX_DEVICE_MEMORY_STACK_SIZE       1024
+#define USBX_DEVICE_MEMORY_STACK_SIZE       2 * 1024
 
 #define UX_DEVICE_APP_THREAD_STACK_SIZE   1024
 #define UX_DEVICE_APP_THREAD_PRIO         10
