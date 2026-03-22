@@ -84,6 +84,7 @@ set(SEDSPRINTF_RS_TARGET "thumbv8m.main-none-eabihf" CACHE STRING "" FORCE) # Se
 # set(SEDSPRINTF_RS_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE) # Set target for embedded systems
 add_subdirectory(${CMAKE_SOURCE_DIR}/sedsprintf_rs)
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsprintf_rs)
+set(TELEMETRY_TIMESYNC_MASTER_PRIO "-1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
 
 # Option defaults to ON
 option(ENABLE_TELEMETRY "Enable the telemetry subsystem" OFF)
