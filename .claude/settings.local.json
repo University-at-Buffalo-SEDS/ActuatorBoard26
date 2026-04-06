@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"c:/Users/micha/Desktop/SEDS/GroundStation26\" -type f \\\\\\( -name \"*.rs\" -o -name \"*.py\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"FlightCommands\\\\|ValveBoardCommands\\\\|ActuatorBoardCommands\\\\|FlightComputerCommands\" {} \\\\;)",
+      "Bash(python build.py build --debug)",
+      "Bash(where cmake:*)",
+      "Bash(where ninja:*)",
+      "Bash(where arm-none-eabi-gcc:*)",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'C:\\\\Program Files','C:\\\\Program Files \\(x86\\)','C:\\\\ST','C:\\\\Users\\\\micha\\\\AppData\\\\Local\\\\Programs' -Filter 'cmake.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName\")",
+      "Read(//c//**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(powershell -Command \"Get-Command cmake -ErrorAction SilentlyContinue; Get-Command ninja -ErrorAction SilentlyContinue; Get-Command arm-none-eabi-gcc -ErrorAction SilentlyContinue\")",
+      "Bash(cmd //c \"where cmake 2>&1 & where ninja 2>&1 & where arm-none-eabi-gcc 2>&1 & echo PATH=%PATH%\")",
+      "Bash(cmd //c \"dir /b \\\\\"C:\\\\Program Files\\\\\" 2>nul | findstr /i \\\\\"cmake stm32 arm\\\\\"\")",
+      "Bash(cmd //c \"dir \\\\\"C:\\\\Program Files\\\\\" /b 2>&1 | findstr /i cmake\")",
+      "Bash(cmd //c \"where winget & where choco & where scoop\")",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"/c/Program Files/CMake/bin:/c/Program Files \\(x86\\)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin:/c/Users/micha/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH\")",
+      "Bash(python build.py build --release)"
+    ]
+  }
+}
