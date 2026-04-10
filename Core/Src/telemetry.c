@@ -50,8 +50,8 @@ static void print_data_no_telem(void *data, size_t len)
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 
-static uint8_t g_can_rx_subscribed = 0U;
-static int32_t g_can_side_id = -1;
+static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
+static UNUSED_FUNCTION int32_t g_can_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 
@@ -155,8 +155,13 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   }
   // get the current command and push into the tx queue for the main task to handle
   uint8_t cmd_u8;
-  thread_comm_msg_t cmd = (thread_comm_msg_t)seds_pkt_get_u8(pkt, &cmd_u8, 1U);
-  if (thread_comm_send(cmd, TX_NO_WAIT) != TX_SUCCESS)
+  int32_t got = seds_pkt_get_u8(pkt, &cmd_u8, 1U);
+  if (got != 1)
+  {
+    return (got < 0) ? (SedsResult)got : SEDS_BAD_ARG;
+  }
+  
+  if (thread_comm_send(cmd_u8, TX_NO_WAIT) != TX_SUCCESS)
   {
     return SEDS_ERR;
   }
@@ -197,7 +202,7 @@ static SedsResult telemetry_apply_local_unix_time_locked(SedsRouter *router)
                                                        second, millisecond);
 }
 
-static SedsResult telemetry_configure_timesync_locked(SedsRouter *router)
+static UNUSED_FUNCTION SedsResult telemetry_configure_timesync_locked(SedsRouter *router)
 {
   SedsResult result;
 
@@ -259,7 +264,7 @@ void telemetry_set_unix_time_ms(uint64_t unix_ms)
 #endif
 }
 
-static uint64_t node_now_since_ms(void *user)
+static UNUSED_FUNCTION uint64_t node_now_since_ms(void *user)
 {
   (void)user;
   const RouterState s = g_router;
@@ -279,7 +284,7 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user)
   return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
-static void telemetry_can_rx(const uint8_t *data, size_t len, void *user)
+static UNUSED_FUNCTION void telemetry_can_rx(const uint8_t *data, size_t len, void *user)
 {
   (void)user;
   rx_asynchronous(data, len);
@@ -619,7 +624,7 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms)
 #endif
 }
 
-static SedsResult log_error_impl(uint8_t queue, const char *fmt, va_list args)
+static UNUSED_FUNCTION SedsResult log_error_impl(uint8_t queue, const char *fmt, va_list args)
 {
   va_list args_copy;
   int len = 0;

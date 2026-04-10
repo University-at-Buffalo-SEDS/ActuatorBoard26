@@ -22,7 +22,7 @@ static void handle_command(thread_comm_msg_t cmd)
     case CMD_IGNITER_OFF:
         HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
         break;
-
+    
     default:
         break;
     }
