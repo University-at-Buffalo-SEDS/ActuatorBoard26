@@ -44,6 +44,13 @@ static void handle_command(thread_comm_msg_t cmd)
     case CMD_NITROUS_CLOSE:
         solenoidOff(&n20_solenoid);
         break;
+
+    case CMD_RETRACT_PLUMBING:
+        stepperSetDir(&stepper, STEP_CW);
+        stepperWake(&stepper);
+        stepperMoveSteps(&stepper, 200, 1000);
+        stepperSleep(&stepper);
+        break;
     
     default:
         break;
