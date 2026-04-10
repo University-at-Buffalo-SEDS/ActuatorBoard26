@@ -2,14 +2,12 @@
 #include "tx_api.h"
 #include "thread_comm.h"
 #include "main.h"
+#include "telemetry.h"
 
 #include <stdint.h>
 
 TX_THREAD main_task_thread;
 #define MAIN_TASK_STACK_SIZE (4U * 1024U)
-
-#define CMD_IGNITER_ON   7U
-#define CMD_IGNITER_OFF  11U
 
 static uint8_t g_aborted = 0U;
 

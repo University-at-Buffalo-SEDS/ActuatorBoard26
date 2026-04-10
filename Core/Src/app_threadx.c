@@ -74,6 +74,7 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   telemetry_set_byte_pool(byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
+  
 
   ret = thread_comm_init(byte_pool);
   if (ret != TX_SUCCESS)
