@@ -3,6 +3,9 @@
 #include "thread_comm.h"
 #include "main.h"
 #include "telemetry.h"
+#include "igniter_driver.h"
+#include "solenoid_driver.h"
+#include "stepper_driver.h"
 
 #include <stdint.h>
 
@@ -10,17 +13,36 @@ TX_THREAD main_task_thread;
 #define MAIN_TASK_STACK_SIZE (4U * 1024U)
 
 static uint8_t g_aborted = 0U;
+igniter_t igniter = {IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, IGNITER_FAULT_GPIO_Port, IGNITER_FAULT_Pin, 3};
+solenoid_t n2_solenoid = {NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, N2_SIG_GPIO_Port, N2_SIG_Pin, N2_FAULT_GPIO_Port, N2_FAULT_Pin, 2};
+solenoid_t n20_solenoid = {NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, N20_SIG_GPIO_Port, N20_SIG_Pin, N20_FAULT_GPIO_Port, N20_FAULT_Pin, 1};
+stepper_t stepper = {STEPPER_CTRL_GPIO_Port, STEPPER_CTRL_Pin, STEPPER_DIR_GPIO_Port, STEPPER_DIR_Pin, STEPPER_RESET_GPIO_Port, STEPPER_RESET_Pin, STEPPER_SLEEP_GPIO_Port, STEPPER_SLEEP_Pin, false, STEP_CW};
 
 static void handle_command(thread_comm_msg_t cmd)
 {
-    switch (cmd)
-    {
+    switch (cmd){
     case CMD_IGNITER_ON:
-        HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_SET);
+        igniterOn(&igniter);
         break;
 
     case CMD_IGNITER_OFF:
-        HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
+        igniterOff(&igniter);
+        break;
+
+    case CMD_NITROGEN_OPEN:
+        solenoidOn(&n2_solenoid);
+        break;
+
+    case CMD_NITROGEN_CLOSE:
+        solenoidOff(&n2_solenoid);
+        break;
+
+    case CMD_NITROUS_OPEN:
+        solenoidOn(&n20_solenoid);
+        break;
+
+    case CMD_NITROUS_CLOSE:
+        solenoidOff(&n20_solenoid);
         break;
     
     default:
@@ -31,6 +53,10 @@ static void handle_command(thread_comm_msg_t cmd)
 void main_task_entry(ULONG initial_input)
 {
     (void)initial_input;
+    solenoidInit(&n2_solenoid);
+    solenoidInit(&n20_solenoid);
+    igniterInit(&igniter);
+    stepperInit(&stepper);
 
     thread_comm_msg_t msg;
 

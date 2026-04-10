@@ -440,72 +440,72 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10
+  HAL_GPIO_WritePin(GPIOA, H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin|P_BCKWD_EN_Pin|P_FWD_EN_Pin
                           |GREEN_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, H_BRIDGE_FWD_BTN_EN_Pin|STEPPER_BCKWD_BTN_EN_Pin|N_BCKWD_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|STEPPER_CTRL_Pin|STEPPER_DIR_Pin|NITROUS_PIN_Pin
+  HAL_GPIO_WritePin(GPIOB, STEPPER_FWD_BTN_EN_Pin|STEPPER_CTRL_Pin|STEPPER_DIR_Pin|NITROUS_PIN_Pin
                           |NITROGEN_PIN_Pin|IGNITER_PIN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PC0 PC1 PC2 PC3
-                           PC6 PC7 PC8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
-                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8;
+  /*Configure GPIO pins : H_BRIDGE_FAULT_Pin N20_FAULT_Pin N2_FAULT_Pin IGNITER_FAULT_Pin
+                           STEPPER_FWD_SIG_Pin H_BRIDGE_BCKWD_SIG_Pin H_BRIDGE_FWD_SIG_Pin */
+  GPIO_InitStruct.Pin = H_BRIDGE_FAULT_Pin|N20_FAULT_Pin|N2_FAULT_Pin|IGNITER_FAULT_Pin
+                          |STEPPER_FWD_SIG_Pin|H_BRIDGE_BCKWD_SIG_Pin|H_BRIDGE_FWD_SIG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA3 PA4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4;
+  /*Configure GPIO pins : STEPPER_RESET_Pin STEPPER_SLEEP_Pin */
+  GPIO_InitStruct.Pin = STEPPER_RESET_Pin|STEPPER_SLEEP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA7 PA8 PA9 PA10
+  /*Configure GPIO pins : H_BRIDGE_BCKWD_BTN_EN_Pin N_FWD_EN_Pin P_BCKWD_EN_Pin P_FWD_EN_Pin
                            GREEN_LED_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10
+  GPIO_InitStruct.Pin = H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin|P_BCKWD_EN_Pin|P_FWD_EN_Pin
                           |GREEN_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC4 PC5 PC9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_9;
+  /*Configure GPIO pins : H_BRIDGE_FWD_BTN_EN_Pin STEPPER_BCKWD_BTN_EN_Pin N_BCKWD_EN_Pin */
+  GPIO_InitStruct.Pin = H_BRIDGE_FWD_BTN_EN_Pin|STEPPER_BCKWD_BTN_EN_Pin|N_BCKWD_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB0 STEPPER_CTRL_Pin STEPPER_DIR_Pin NITROUS_PIN_Pin
+  /*Configure GPIO pins : STEPPER_FWD_BTN_EN_Pin STEPPER_CTRL_Pin STEPPER_DIR_Pin NITROUS_PIN_Pin
                            NITROGEN_PIN_Pin IGNITER_PIN_Pin */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|STEPPER_CTRL_Pin|STEPPER_DIR_Pin|NITROUS_PIN_Pin
+  GPIO_InitStruct.Pin = STEPPER_FWD_BTN_EN_Pin|STEPPER_CTRL_Pin|STEPPER_DIR_Pin|NITROUS_PIN_Pin
                           |NITROGEN_PIN_Pin|IGNITER_PIN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB11 PB12 PB13 PB14
-                           PB15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14
-                          |GPIO_PIN_15;
+  /*Configure GPIO pins : GENERAL_FAULT_SIG_Pin IGNITER_SIG_Pin N2_SIG_Pin N20_SIG_Pin
+                           STEPPER_BCKWD_SIG_Pin */
+  GPIO_InitStruct.Pin = GENERAL_FAULT_SIG_Pin|IGNITER_SIG_Pin|N2_SIG_Pin|N20_SIG_Pin
+                          |STEPPER_BCKWD_SIG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PD2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  /*Configure GPIO pin : BACKUP_VALVE_EN_Pin */
+  GPIO_InitStruct.Pin = BACKUP_VALVE_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  HAL_GPIO_Init(BACKUP_VALVE_EN_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
