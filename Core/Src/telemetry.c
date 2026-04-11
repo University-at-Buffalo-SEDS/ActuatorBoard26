@@ -3,6 +3,7 @@
 
 #include "app_threadx.h"
 #include "can_bus.h"
+#include "main.h"
 #include "sedsprintf.h"
 #include "stm32g4xx_hal.h"
 
@@ -54,8 +55,11 @@ static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
 static UNUSED_FUNCTION int32_t g_can_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
+static int32_t g_telemetry_init_error_code = TELEMETRY_INIT_OK;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
+
+int32_t telemetry_get_init_error_code(void) { return g_telemetry_init_error_code; }
 
 static uint64_t tx_raw_now_ms_locked(void)
 {
@@ -280,13 +284,13 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user)
   {
     return SEDS_BAD_ARG;
   }
-
   return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
 static UNUSED_FUNCTION void telemetry_can_rx(const uint8_t *data, size_t len, void *user)
 {
   (void)user;
+  HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
   rx_asynchronous(data, len);
 }
 
@@ -297,6 +301,8 @@ void rx_asynchronous(const uint8_t *bytes, size_t len)
   (void)len;
   return;
 #else
+  SedsResult result = SEDS_OK;
+
   if (!bytes || len == 0U)
   {
     return;
@@ -309,13 +315,15 @@ void rx_asynchronous(const uint8_t *bytes, size_t len)
 
   if (g_can_side_id >= 0)
   {
-    (void)seds_router_rx_serialized_packet_to_queue_from_side(
+    result = seds_router_rx_serialized_packet_to_queue_from_side(
         g_router.r, (uint32_t)g_can_side_id, bytes, len);
   }
   else
   {
-    (void)seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
+    result = seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
   }
+
+  (void)result;
 #endif
 }
 
@@ -400,6 +408,7 @@ SedsResult init_telemetry_router(void)
 
   if (g_router.created && g_router.r)
   {
+    g_telemetry_init_error_code = TELEMETRY_INIT_OK;
     return SEDS_OK;
   }
 
@@ -411,7 +420,9 @@ SedsResult init_telemetry_router(void)
     }
     else
     {
-      printf("Error: can_bus_subscribe_rx failed\r\n");
+      g_telemetry_init_error_code = TELEMETRY_INIT_SUBSCRIBE_RX_FAILED;
+      printf("Error %ld: can_bus_subscribe_rx failed\r\n",
+             (long)g_telemetry_init_error_code);
     }
   }
   static const SedsLocalEndpointDesc locals[] = {
@@ -432,7 +443,9 @@ SedsResult init_telemetry_router(void)
                       sizeof(locals) / sizeof(locals[0]));
   if (!r)
   {
-    printf("Error: failed to create router\r\n");
+    g_telemetry_init_error_code = TELEMETRY_INIT_ROUTER_NEW_FAILED;
+    printf("Error %ld: failed to create router\r\n",
+           (long)g_telemetry_init_error_code);
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
@@ -442,14 +455,18 @@ SedsResult init_telemetry_router(void)
   g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, false);
   if (g_can_side_id < 0)
   {
-    printf("Error: failed to add CAN side: %ld\r\n", (long)g_can_side_id);
+    g_telemetry_init_error_code = TELEMETRY_INIT_ADD_CAN_SIDE_FAILED;
+    printf("Error %ld: failed to add CAN side: %ld\r\n",
+           (long)g_telemetry_init_error_code, (long)g_can_side_id);
     g_can_side_id = -1;
   }
 
   result = telemetry_configure_timesync_locked(r);
   if (result != SEDS_OK)
   {
-    printf("Error: failed to configure telemetry timesync: %d\r\n", (int)result);
+    g_telemetry_init_error_code = TELEMETRY_INIT_CONFIGURE_TIMESYNC_FAILED;
+    printf("Error %ld: failed to configure telemetry timesync: %d\r\n",
+           (long)g_telemetry_init_error_code, (int)result);
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -460,7 +477,9 @@ SedsResult init_telemetry_router(void)
   result = seds_router_announce_discovery(r);
   if (result != SEDS_OK)
   {
-    printf("Error: failed to announce discovery: %d\r\n", (int)result);
+    g_telemetry_init_error_code = TELEMETRY_INIT_ANNOUNCE_DISCOVERY_FAILED;
+    printf("Error %ld: failed to announce discovery: %d\r\n",
+           (long)g_telemetry_init_error_code, (int)result);
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -468,6 +487,7 @@ SedsResult init_telemetry_router(void)
     return result;
   }
 
+  g_telemetry_init_error_code = TELEMETRY_INIT_OK;
   g_router.r = r;
   g_router.created = 1U;
   g_router.start_time = tx_raw_now_ms_locked();

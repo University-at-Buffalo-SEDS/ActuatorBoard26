@@ -111,8 +111,8 @@ UINT create_main_task(TX_BYTE_POOL *byte_pool)
                             0,
                             pointer,
                             MAIN_TASK_STACK_SIZE,
-                            4,
-                            4,
+                            6,
+                            6,
                             TX_NO_TIME_SLICE,
                             TX_AUTO_START);
 }

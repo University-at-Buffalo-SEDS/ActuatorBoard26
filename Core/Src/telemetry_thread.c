@@ -3,25 +3,63 @@
 #include "tx_api.h"
 #include "telemetry.h"
 #include "can_bus.h"
+#include "thread_comm.h"
 #include "main.h"
 
 TX_THREAD telemetry_thread;
-#define TELEMETRY_THREAD_STACK_SIZE (16U *1024U)
+#define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
+
+extern FDCAN_HandleTypeDef hfdcan2;
+
+#ifndef TELEMETRY_ENABLED
+static void telemetry_disabled_command_cycle(void)
+{
+    static const thread_comm_msg_t on_commands[] = {
+        CMD_IGNITER_ON,
+        CMD_NITROGEN_OPEN,
+        CMD_NITROUS_OPEN,
+    };
+    static const thread_comm_msg_t off_commands[] = {
+        CMD_IGNITER_OFF,
+        CMD_NITROGEN_CLOSE,
+        CMD_NITROUS_CLOSE,
+    };
+
+    for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)
+    {
+        (void)thread_comm_send(on_commands[i], TX_WAIT_FOREVER);
+        tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
+    }
+
+    for (UINT i = 0; i < (UINT)(sizeof(off_commands) / sizeof(off_commands[0])); ++i)
+    {
+        (void)thread_comm_send(off_commands[i], TX_WAIT_FOREVER);
+        tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
+    }
+}
+#endif
 
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
 
-    // Ensure router exists early (so we can send requests immediately)
+    can_bus_init(&hfdcan2);
+#ifdef TELEMETRY_ENABLED
     (void)init_telemetry_router();
+#endif
 
     for (;;) {
         can_bus_process_rx();
+#ifdef TELEMETRY_ENABLED
         (void)telemetry_poll_discovery();
-        (void)process_all_queues_timeout(50);
+        (void)process_all_queues_timeout(0);
         (void)telemetry_poll_timesync();
-
         tx_thread_sleep(1);
+
+#else
+        tx_thread_sleep(1);
+        // telemetry_disabled_command_cycle();
+#endif
     }
 }
 

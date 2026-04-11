@@ -19,7 +19,7 @@ extern "C" {
  * payload is needed later, this type and the queue configuration can be
  * expanded together.
  */
-typedef ULONG thread_comm_msg_t;
+typedef uint8_t thread_comm_msg_t;
 
 /**
  * @brief Create the shared queue and state protection mutex.
