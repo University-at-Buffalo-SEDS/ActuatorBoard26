@@ -25,6 +25,7 @@
 //  ensure the consumer sees the slot contents after observing `head` (acquire).
 
 #include "can_bus.h"
+#include "main.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -38,6 +39,10 @@
 
 #ifndef CAN_BUS_MAX_SUBSCRIBERS
 #define CAN_BUS_MAX_SUBSCRIBERS 8
+#endif
+
+#ifndef CAN_BUS_ACTIVITY_LED_PULSE_MS
+#define CAN_BUS_ACTIVITY_LED_PULSE_MS 20u
 #endif
 
 // =========================
@@ -121,6 +126,29 @@ typedef struct {
 
 static FDCAN_HandleTypeDef *g_hfdcan = NULL;
 static can_bus_sub_t g_subs[CAN_BUS_MAX_SUBSCRIBERS];
+static volatile uint32_t g_can_led_until_ms = 0;
+static volatile uint8_t g_can_led_active = 0u;
+
+static inline int tick_reached(uint32_t now, uint32_t deadline) {
+  return (int32_t)(now - deadline) >= 0;
+}
+
+static inline void can_bus_mark_activity(void) {
+  uint32_t now = HAL_GetTick();
+  g_can_led_until_ms = now + CAN_BUS_ACTIVITY_LED_PULSE_MS;
+
+  if (g_can_led_active == 0u) {
+    HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+    g_can_led_active = 1u;
+  }
+}
+
+static inline void can_bus_service_activity_led(uint32_t now) {
+  if ((g_can_led_active != 0u) && tick_reached(now, g_can_led_until_ms)) {
+    HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+    g_can_led_active = 0u;
+  }
+}
 
 static inline void can_bus_notify_rx(const uint8_t *data, size_t len) {
   for (unsigned i = 0; i < CAN_BUS_MAX_SUBSCRIBERS; i++) {
@@ -435,6 +463,9 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan) {
   // subscribers static-zeroed
   HAL_FDCAN_ActivateNotification(hfdcan, FDCAN_IT_RX_FIFO1_NEW_MESSAGE, 0);
   HAL_FDCAN_Start(hfdcan);
+  HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+  g_can_led_until_ms = 0;
+  g_can_led_active = 0u;
 
   // reset rings + reasm
   g_rx_head = 0;
@@ -510,7 +541,11 @@ HAL_StatusTypeDef can_bus_send_bytes(const uint8_t *bytes, size_t len,
   uint8_t txData[64] = {0};
   memcpy(txData, bytes, len);
 
-  return HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, &txHeader, txData);
+  HAL_StatusTypeDef st = HAL_FDCAN_AddMessageToTxFifoQ(g_hfdcan, &txHeader, txData);
+  if (st == HAL_OK) {
+    can_bus_mark_activity();
+  }
+  return st;
 }
 
 // Send an arbitrarily large buffer by fragmenting into multiple CAN FD frames.
@@ -582,12 +617,15 @@ HAL_StatusTypeDef can_bus_send_large(const uint8_t *bytes, size_t len,
 // reassembles fragmented messages, and notifies subscribers.
 void can_bus_process_rx(void) {
   uint32_t now = HAL_GetTick();
+  can_bus_service_activity_led(now);
   reasm_expire_old(now);
 
   can_bus_rx_frame_t f;
   while (rb_pop(&f)) {
     handle_rx_frame(&f, now);
   }
+
+  can_bus_service_activity_led(HAL_GetTick());
 }
 
 // =========================
@@ -622,5 +660,6 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan,
 
     // Push into ring; drop-oldest on overflow
     rb_push_drop_oldest(std_id, data, (uint8_t)len);
+    can_bus_mark_activity();
   }
 }

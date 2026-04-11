@@ -51,11 +51,17 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/thread_comm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/main_task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/spark_stuff/igniter_driver.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/sol_stuff/solenoid_driver.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/stepper_stuff/stepper_driver.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/spark_stuff
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/sol_stuff
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/stepper_stuff
 )
 
 # Add project symbols (macros)
