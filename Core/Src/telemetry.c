@@ -290,7 +290,6 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user)
 static UNUSED_FUNCTION void telemetry_can_rx(const uint8_t *data, size_t len, void *user)
 {
   (void)user;
-  HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
   rx_asynchronous(data, len);
 }
 
@@ -395,6 +394,19 @@ SedsResult telemetry_poll_discovery(void)
   }
 
   return seds_router_poll_discovery(g_router.r, NULL);
+#endif
+}
+
+SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on)
+{
+  const uint8_t payload[2] = {cmd_id, (uint8_t)((on != 0U) ? 1U : 0U)};
+
+#ifndef TELEMETRY_ENABLED
+  (void)payload;
+  return SEDS_OK;
+#else
+  return log_telemetry_asynchronous(SEDS_DT_UMBILICAL_STATUS, payload, 2U,
+                                    sizeof(payload[0]));
 #endif
 }
 

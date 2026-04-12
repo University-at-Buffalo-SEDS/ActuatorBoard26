@@ -58,6 +58,7 @@ SedsResult log_error_syncronous(const char *fmt, ...);
 SedsResult telemetry_poll_timesync(void);
 SedsResult telemetry_announce_discovery(void);
 SedsResult telemetry_poll_discovery(void);
+SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on);
 void telemetry_note_can_rx(void);
 void telemetry_toggle_led_on_can_rx(void);
 int32_t telemetry_get_init_error_code(void);
