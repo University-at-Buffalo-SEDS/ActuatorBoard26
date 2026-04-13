@@ -28,13 +28,13 @@ static void telemetry_disabled_command_cycle(void)
     for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)
     {
         (void)thread_comm_send(on_commands[i], TX_WAIT_FOREVER);
-        tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
+        tx_thread_relinquish();
     }
 
     for (UINT i = 0; i < (UINT)(sizeof(off_commands) / sizeof(off_commands[0])); ++i)
     {
         (void)thread_comm_send(off_commands[i], TX_WAIT_FOREVER);
-        tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
+        tx_thread_relinquish();
     }
 }
 #endif
@@ -54,10 +54,10 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(0);
         (void)telemetry_poll_timesync();
-        tx_thread_sleep(1);
+        tx_thread_relinquish();
 
 #else
-        tx_thread_sleep(1);
+        tx_thread_relinquish();
         // telemetry_disabled_command_cycle();
 #endif
     }
