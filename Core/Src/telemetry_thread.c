@@ -28,13 +28,13 @@ static void telemetry_disabled_command_cycle(void)
     for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)
     {
         (void)thread_comm_send(on_commands[i], TX_WAIT_FOREVER);
-        tx_thread_relinquish();
+        tx_thread_sleep(1);
     }
 
     for (UINT i = 0; i < (UINT)(sizeof(off_commands) / sizeof(off_commands[0])); ++i)
     {
         (void)thread_comm_send(off_commands[i], TX_WAIT_FOREVER);
-        tx_thread_relinquish();
+        tx_thread_sleep(1);
     }
 }
 #endif
@@ -43,22 +43,24 @@ void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
 
-    can_bus_init(&hfdcan2);
 #ifndef TELEMETRY_TESTING
+    can_bus_init(&hfdcan2);
+
     (void)init_telemetry_router();
 #endif
 
-    for (;;) {
-        can_bus_process_rx();
+    for (;;)
+    {
+
 #ifndef TELEMETRY_TESTING
+        can_bus_process_rx();
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(0);
         (void)telemetry_poll_timesync();
         tx_thread_sleep(1);
 
 #else
-        tx_thread_sleep(1);
-        // telemetry_disabled_command_cycle();
+        telemetry_disabled_command_cycle();
 #endif
     }
 }
@@ -66,14 +68,14 @@ void telemetry_thread_entry(ULONG initial_input)
 UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)
 {
 
-        CHAR *pointer;
+    CHAR *pointer;
 
-  /* Allocate the stack for test  */
-  if (tx_byte_allocate(byte_pool, (VOID**) &pointer,
-                       TELEMETRY_THREAD_STACK_SIZE, TX_NO_WAIT) != TX_SUCCESS)
-  {
-    return TX_POOL_ERROR;
-  }
+    /* Allocate the stack for test  */
+    if (tx_byte_allocate(byte_pool, (VOID **)&pointer,
+                         TELEMETRY_THREAD_STACK_SIZE, TX_NO_WAIT) != TX_SUCCESS)
+    {
+        return TX_POOL_ERROR;
+    }
 
     UINT status = tx_thread_create(&telemetry_thread,
                                    "Telemetry Thread",

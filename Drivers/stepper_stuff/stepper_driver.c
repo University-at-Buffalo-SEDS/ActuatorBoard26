@@ -10,7 +10,9 @@ static inline void delay_us(uint32_t us)
 static void dwt_init(void)
 {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->LAR    = 0xC5ACCE55;   // unlock DWT write access on Cortex-M4
+#if defined(DWT_LAR)
+    DWT->LAR    = 0xC5ACCE55;
+#endif
     DWT->CYCCNT = 0;
     DWT->CTRL  |= DWT_CTRL_CYCCNTENA_Msk;
 }
