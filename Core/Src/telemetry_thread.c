@@ -15,14 +15,11 @@ extern FDCAN_HandleTypeDef hfdcan2;
 static void telemetry_disabled_command_cycle(void)
 {
     static const thread_comm_msg_t on_commands[] = {
-        CMD_IGNITER_ON,
         CMD_NITROGEN_OPEN,
-        CMD_NITROUS_OPEN,
+        CMD_RETRACT_PLUMBING,
     };
     static const thread_comm_msg_t off_commands[] = {
-        CMD_IGNITER_OFF,
-        CMD_NITROGEN_CLOSE,
-        CMD_NITROUS_CLOSE,
+
     };
 
     for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)

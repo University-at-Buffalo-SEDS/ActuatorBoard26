@@ -446,8 +446,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin|P_BCKWD_EN_Pin|P_FWD_EN_Pin
-                          |GREEN_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, STEPPER_RESET_Pin|STEPPER_SLEEP_Pin|H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin
+                          |P_BCKWD_EN_Pin|P_FWD_EN_Pin|GREEN_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, H_BRIDGE_FWD_BTN_EN_Pin|STEPPER_BCKWD_BTN_EN_Pin|N_BCKWD_EN_Pin, GPIO_PIN_RESET);
@@ -467,16 +467,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : STEPPER_RESET_Pin STEPPER_SLEEP_Pin */
-  GPIO_InitStruct.Pin = STEPPER_RESET_Pin|STEPPER_SLEEP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : H_BRIDGE_BCKWD_BTN_EN_Pin N_FWD_EN_Pin P_BCKWD_EN_Pin P_FWD_EN_Pin
-                           GREEN_LED_Pin */
-  GPIO_InitStruct.Pin = H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin|P_BCKWD_EN_Pin|P_FWD_EN_Pin
-                          |GREEN_LED_Pin;
+  /*Configure GPIO pins : STEPPER_RESET_Pin STEPPER_SLEEP_Pin H_BRIDGE_BCKWD_BTN_EN_Pin N_FWD_EN_Pin
+                           P_BCKWD_EN_Pin P_FWD_EN_Pin GREEN_LED_Pin */
+  GPIO_InitStruct.Pin = STEPPER_RESET_Pin|STEPPER_SLEEP_Pin|H_BRIDGE_BCKWD_BTN_EN_Pin|N_FWD_EN_Pin
+                          |P_BCKWD_EN_Pin|P_FWD_EN_Pin|GREEN_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
