@@ -73,7 +73,7 @@ static void handle_command(thread_comm_msg_t cmd)
     case CMD_RETRACT_PLUMBING:
         stepperSetDir(&stepper, STEP_CW);
         stepperWake(&stepper);
-        stepperMoveSteps(&stepper, 20, 10);
+        stepperMoveSteps(&stepper, 20000, 80);
         stepperSleep(&stepper);
         g_plumbing_retracted = 1U;
         (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);

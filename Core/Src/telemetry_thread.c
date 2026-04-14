@@ -5,7 +5,6 @@
 #include "can_bus.h"
 #include "thread_comm.h"
 #include "main.h"
-#define TELEMETRY_TESTING 0
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
 
@@ -15,7 +14,7 @@ extern FDCAN_HandleTypeDef hfdcan2;
 static void telemetry_disabled_command_cycle(void)
 {
     static const thread_comm_msg_t on_commands[] = {
-        CMD_NITROGEN_OPEN,
+        // CMD_NITROGEN_OPEN,
         CMD_RETRACT_PLUMBING,
     };
     static const thread_comm_msg_t off_commands[] = {
@@ -45,21 +44,25 @@ void telemetry_thread_entry(ULONG initial_input)
 
     (void)init_telemetry_router();
 #endif
+#ifndef TELEMETRY_TESTING
 
     for (;;)
     {
 
-#ifndef TELEMETRY_TESTING
         can_bus_process_rx();
         (void)telemetry_poll_discovery();
         (void)process_all_queues_timeout(0);
         (void)telemetry_poll_timesync();
         tx_thread_sleep(1);
-
-#else
-        telemetry_disabled_command_cycle();
-#endif
     }
+#else
+    for (;;)
+    {
+        telemetry_disabled_command_cycle();
+
+        tx_thread_sleep(3000);
+    }
+#endif
 }
 
 UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool)
