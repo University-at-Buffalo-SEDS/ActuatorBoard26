@@ -144,7 +144,7 @@ UINT create_main_task(TX_BYTE_POOL *byte_pool)
     return tx_thread_create(&main_task_thread,
                             "Main Task",
                             main_task_entry,
-                            0,
+                            2,
                             pointer,
                             MAIN_TASK_STACK_SIZE,
                             6,
