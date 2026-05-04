@@ -10,7 +10,14 @@ TX_THREAD saftey_task_thread;
 
 void saftey_task_entry(ULONG initial_input)
 {
+    while (1)
+    {
+        // Implement safety checks here
+        // For example, monitor sensor data, check for faults, etc.
 
+        // Sleep for a defined period before the next check
+        tx_thread_sleep(100); // Sleep for 100 ticks (adjust as needed)
+    }
 }
 
 UINT create_safety_task(TX_BYTE_POOL *byte_pool)

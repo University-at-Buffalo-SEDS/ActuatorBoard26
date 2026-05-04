@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "stm32g4xx_hal_gpio.h"
 #include "thread_comm.h"
 
 #ifndef TELEMETRY_ENABLED
@@ -284,6 +285,7 @@ SedsResult tx_send(const uint8_t *bytes, size_t len, void *user)
   {
     return SEDS_BAD_ARG;
   }
+  HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
   return (can_bus_send_large(bytes, len, 0x03) == HAL_OK) ? SEDS_OK : SEDS_IO;
 }
 
@@ -464,7 +466,7 @@ SedsResult init_telemetry_router(void)
     return SEDS_ERR;
   }
 
-  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, false);
+  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, true);
   if (g_can_side_id < 0)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_ADD_CAN_SIDE_FAILED;

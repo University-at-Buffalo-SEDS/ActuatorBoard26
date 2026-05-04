@@ -15,22 +15,26 @@ static void telemetry_disabled_command_cycle(void)
 {
     static const thread_comm_msg_t on_commands[] = {
         // CMD_NITROGEN_OPEN,
-        CMD_RETRACT_PLUMBING,
+        CMD_NITROGEN_OPEN,
+        CMD_NITROUS_OPEN,
+        
     };
     static const thread_comm_msg_t off_commands[] = {
-
+    CMD_NITROGEN_CLOSE,
+        CMD_NITROUS_CLOSE,
     };
 
     for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)
     {
         (void)thread_comm_send(on_commands[i], TX_WAIT_FOREVER);
-        tx_thread_sleep(1);
+        tx_thread_sleep(1000);
     }
+        tx_thread_sleep(1000);
 
     for (UINT i = 0; i < (UINT)(sizeof(off_commands) / sizeof(off_commands[0])); ++i)
     {
         (void)thread_comm_send(off_commands[i], TX_WAIT_FOREVER);
-        tx_thread_sleep(1);
+        tx_thread_sleep(1000);
     }
 }
 #endif
@@ -38,9 +42,9 @@ static void telemetry_disabled_command_cycle(void)
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
+    can_bus_init(&hfdcan2);
 
 #ifndef TELEMETRY_TESTING
-    can_bus_init(&hfdcan2);
 
     (void)init_telemetry_router();
 #endif
@@ -58,9 +62,11 @@ void telemetry_thread_entry(ULONG initial_input)
 #else
     for (;;)
     {
+        can_bus_process_rx();
+
         telemetry_disabled_command_cycle();
 
-        tx_thread_sleep(3000);
+        tx_thread_sleep(000);
     }
 #endif
 }

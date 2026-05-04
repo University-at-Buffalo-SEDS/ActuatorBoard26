@@ -31,6 +31,17 @@ static void publish_all_umbilical_statuses(void)
     (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
 }
 
+static void publish_umbilical_statuses_if_due(ULONG *last_status_ticks)
+{
+    ULONG now = tx_time_get();
+
+    if ((ULONG)(now - *last_status_ticks) >= UMBILICAL_STATUS_PERIOD_TICKS)
+    {
+        publish_all_umbilical_statuses();
+        *last_status_ticks = now;
+    }
+}
+
 static void handle_command(thread_comm_msg_t cmd)
 {
     switch (cmd){
@@ -112,6 +123,7 @@ void main_task_entry(ULONG initial_input)
                 // Dump any pending messages bc we ABORTING!!!!!!!
             }
 
+            publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
             tx_thread_sleep(10);
             continue;
         }
@@ -121,11 +133,7 @@ void main_task_entry(ULONG initial_input)
             handle_command(msg);
         }
 
-        if ((ULONG)(tx_time_get() - last_umbilical_status_ticks) >= UMBILICAL_STATUS_PERIOD_TICKS)
-        {
-            publish_all_umbilical_statuses();
-            last_umbilical_status_ticks = tx_time_get();
-        }
+        publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
 
         tx_thread_sleep(1);
     }
