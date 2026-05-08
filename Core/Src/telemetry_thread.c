@@ -15,13 +15,13 @@ static void telemetry_disabled_command_cycle(void)
 {
     static const thread_comm_msg_t on_commands[] = {
         // CMD_NITROGEN_OPEN,
-        CMD_NITROGEN_OPEN,
-        CMD_NITROUS_OPEN,
+        {.cmd = CMD_NITROGEN_OPEN, .timestamp_ms = 0ULL},
+        {.cmd = CMD_NITROUS_OPEN, .timestamp_ms = 0ULL},
         
     };
     static const thread_comm_msg_t off_commands[] = {
-    CMD_NITROGEN_CLOSE,
-        CMD_NITROUS_CLOSE,
+        {.cmd = CMD_NITROGEN_CLOSE, .timestamp_ms = 0ULL},
+        {.cmd = CMD_NITROUS_CLOSE, .timestamp_ms = 0ULL},
     };
 
     for (UINT i = 0; i < (UINT)(sizeof(on_commands) / sizeof(on_commands[0])); ++i)

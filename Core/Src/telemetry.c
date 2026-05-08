@@ -209,7 +209,12 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
     return SEDS_OK;
   }
   
-  if (thread_comm_send(cmd_u8, TX_NO_WAIT) != TX_SUCCESS)
+  const thread_comm_msg_t msg = {
+      .cmd = cmd_u8,
+      .timestamp_ms = pkt->timestamp,
+  };
+
+  if (thread_comm_send(msg, TX_NO_WAIT) != TX_SUCCESS)
   {
     return SEDS_ERR;
   }

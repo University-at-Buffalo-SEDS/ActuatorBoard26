@@ -12,14 +12,10 @@ extern "C" {
  */
 #define THREAD_COMM_QUEUE_DEPTH 16U
 
-/**
- * @brief Queue message type used by the inter-thread communication layer.
- *
- * The current queue is configured for one ULONG per message. If a richer
- * payload is needed later, this type and the queue configuration can be
- * expanded together.
- */
-typedef uint8_t thread_comm_msg_t;
+typedef struct {
+    uint8_t cmd;
+    uint64_t timestamp_ms;
+} thread_comm_msg_t;
 
 /**
  * @brief Create the shared queue and state protection mutex.
