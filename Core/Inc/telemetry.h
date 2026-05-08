@@ -75,6 +75,7 @@ enum actuator_commands {
     CMD_IGNITER_OFF = 11,
     CMD_NITROGEN_CLOSE = 12,
     CMD_NITROUS_CLOSE = 13,
+    CMD_IGNITER_SEQUENCE = 14,
 };
 void telemetry_set_unix_time_ms(uint64_t unix_ms);
 

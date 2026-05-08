@@ -52,6 +52,44 @@ static void print_data_no_telem(void *data, size_t len)
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 
+static bool is_replayed_igniter_sequence_command(const SedsPacketView *pkt, uint8_t cmd_u8)
+{
+  static uint8_t have_last = 0U;
+  static uint64_t last_timestamp = 0U;
+  static char last_sender[32];
+  static size_t last_sender_len = 0U;
+
+  if (cmd_u8 != CMD_IGNITER_SEQUENCE)
+  {
+    return false;
+  }
+
+  const char *sender = pkt->sender;
+  size_t sender_len = pkt->sender_len;
+  if (sender == NULL)
+  {
+    sender = "";
+    sender_len = 0U;
+  }
+
+  if ((have_last != 0U) &&
+      (pkt->timestamp == last_timestamp) &&
+      (sender_len == last_sender_len) &&
+      (memcmp(sender, last_sender, sender_len) == 0))
+  {
+    return true;
+  }
+
+  last_timestamp = pkt->timestamp;
+  last_sender_len = (sender_len < sizeof(last_sender)) ? sender_len : sizeof(last_sender);
+  if (last_sender_len > 0U)
+  {
+    memcpy(last_sender, sender, last_sender_len);
+  }
+  have_last = 1U;
+  return false;
+}
+
 static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
 static UNUSED_FUNCTION int32_t g_can_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
@@ -164,6 +202,11 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   if (got != 1)
   {
     return (got < 0) ? (SedsResult)got : SEDS_BAD_ARG;
+  }
+
+  if (is_replayed_igniter_sequence_command(pkt, cmd_u8))
+  {
+    return SEDS_OK;
   }
   
   if (thread_comm_send(cmd_u8, TX_NO_WAIT) != TX_SUCCESS)
