@@ -82,6 +82,25 @@ static void igniter_off(void)
     (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
 }
 
+static void force_abort_outputs_off(void)
+{
+    g_launch_sequence_active = 0U;
+    g_launch_sequence_igniter_started = 0U;
+    g_launch_sequence_holdoff_active = 0U;
+
+    igniter_off();
+    solenoidOff(&n2_solenoid);
+    solenoidOff(&n20_solenoid);
+    stepperSleep(&stepper);
+
+    HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
+
+    g_nitrogen_open = 0U;
+    g_nitrous_open = 0U;
+    (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+    (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+}
+
 static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
 {
     const ULONG now_ticks = tx_time_get();
@@ -251,11 +270,7 @@ void main_task_entry(ULONG initial_input)
         {
             if (g_aborted == 0U)
             {
-                g_launch_sequence_active = 0U;
-                g_launch_sequence_igniter_started = 0U;
-                g_launch_sequence_holdoff_active = 0U;
-                HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
-                g_igniter_on = 0U;
+                force_abort_outputs_off();
                 g_aborted = 1U;
             }
 
