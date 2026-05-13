@@ -13,6 +13,7 @@ TX_THREAD main_task_thread;
 #define MAIN_TASK_STACK_SIZE (4U * 1024U)
 #define UMBILICAL_STATUS_PERIOD_TICKS TX_TIMER_TICKS_PER_SECOND
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
+#define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
 #define LAUNCH_SEQUENCE_IGNITER_ON_DURATION_MS 10000U
 #define LAUNCH_SEQUENCE_RESTART_HOLDOFF_MS 1500U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS 5000U
@@ -162,7 +163,12 @@ static void service_plumbing_retract(void)
 static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
 {
     const ULONG now_ticks = tx_time_get();
-    const ULONG start_delay_ticks = ms_to_ticks(LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS);
+    const uint32_t compensated_start_delay_ms =
+        (LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS > LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS)
+            ? (LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS -
+               LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS)
+            : 0U;
+    const ULONG start_delay_ticks = ms_to_ticks(compensated_start_delay_ms);
 
     if (packet_timestamp_ms == 0ULL)
     {
@@ -183,12 +189,12 @@ static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
             return now_ticks + start_delay_ticks;
         }
 
-        if (packet_age_ms >= LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS)
+        if (packet_age_ms >= compensated_start_delay_ms)
         {
             return now_ticks;
         }
 
-        return now_ticks + ms_to_ticks((uint32_t)(LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS - packet_age_ms));
+        return now_ticks + ms_to_ticks((uint32_t)(compensated_start_delay_ms - packet_age_ms));
     }
 
     const uint64_t packet_future_ms = packet_timestamp_ms - now_ms;
@@ -197,7 +203,7 @@ static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
         return now_ticks + start_delay_ticks;
     }
 
-    return now_ticks + ms_to_ticks((uint32_t)(packet_future_ms + LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS));
+    return now_ticks + ms_to_ticks((uint32_t)(packet_future_ms + compensated_start_delay_ms));
 }
 
 static void start_launch_sequence(uint64_t packet_timestamp_ms)
