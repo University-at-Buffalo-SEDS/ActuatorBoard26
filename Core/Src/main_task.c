@@ -17,9 +17,8 @@ TX_THREAD main_task_thread;
 #define LAUNCH_SEQUENCE_RESTART_HOLDOFF_MS 1500U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS 5000U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_FUTURE_MS 1000U
-#define PLUMBING_RETRACT_STEPS 40000U
-#define PLUMBING_RETRACT_STEP_PERIOD_US 80U
-#define PLUMBING_RETRACT_SERVICE_STEPS 50U
+#define PLUMBING_RETRACT_STEPS 200000U
+#define PLUMBING_RETRACT_STEP_PERIOD_US 40U
 
 static uint8_t g_aborted = 0U;
 static uint8_t g_igniter_on = 0U;
@@ -123,10 +122,20 @@ static void start_plumbing_retract(void)
         return;
     }
 
+    g_plumbing_retracted = 1U;
+    (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+
     stepperSetDir(&stepper, STEP_CW);
-    stepperWake(&stepper);
-    g_plumbing_retract_steps_remaining = PLUMBING_RETRACT_STEPS;
-    g_plumbing_retract_active = 1U;
+    if (stepperWake(&stepper) != STEP_OK)
+    {
+        return;
+    }
+
+    if (stepperStartMoveTimer(&stepper, PLUMBING_RETRACT_STEPS, PLUMBING_RETRACT_STEP_PERIOD_US) == STEP_OK)
+    {
+        g_plumbing_retract_steps_remaining = PLUMBING_RETRACT_STEPS;
+        g_plumbing_retract_active = 1U;
+    }
 }
 
 static void service_plumbing_retract(void)
@@ -142,27 +151,11 @@ static void service_plumbing_retract(void)
         return;
     }
 
-    uint32_t steps = g_plumbing_retract_steps_remaining;
-    if (steps > PLUMBING_RETRACT_SERVICE_STEPS)
+    if (!stepperIsMoveActive(&stepper))
     {
-        steps = PLUMBING_RETRACT_SERVICE_STEPS;
-    }
-
-    if (stepperMoveSteps(&stepper, steps, PLUMBING_RETRACT_STEP_PERIOD_US) != STEP_OK)
-    {
+        stepperSleep(&stepper);
         g_plumbing_retract_active = 0U;
         g_plumbing_retract_steps_remaining = 0U;
-        stepperSleep(&stepper);
-        return;
-    }
-
-    g_plumbing_retract_steps_remaining -= steps;
-    if (g_plumbing_retract_steps_remaining == 0U)
-    {
-        stepperSleep(&stepper);
-        g_plumbing_retract_active = 0U;
-        g_plumbing_retracted = 1U;
-        (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
     }
 }
 

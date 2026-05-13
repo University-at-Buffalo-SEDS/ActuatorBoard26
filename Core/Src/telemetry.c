@@ -219,7 +219,7 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   {
     return SEDS_OK;
   }
-  
+
   const thread_comm_msg_t msg = {
       .cmd = cmd_u8,
       .timestamp_ms = pkt->timestamp,
@@ -238,7 +238,6 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
   (void)pkt;
   (void)user;
   (void)thread_comm_set_abort(true);
-  main_task_force_outputs_safe_off();
   return SEDS_OK;
 }
 
@@ -271,6 +270,11 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   if (thread_comm_set_flight_state(flight_state) != TX_SUCCESS)
   {
     g_flight_state_handler_error_count++;
+  }
+
+  if (flight_state == ACTUATOR_FLIGHT_STATE_ABORTED)
+  {
+    (void)thread_comm_set_abort(true);
   }
 
   return SEDS_OK;

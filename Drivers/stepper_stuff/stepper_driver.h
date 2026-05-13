@@ -7,6 +7,7 @@
 #define STEP_OK       0
 #define STEP_FAULT   -1
 #define STEP_SLEEPING -2
+#define STEP_BUSY     -3
 #define STEP_CW       0
 #define STEP_CCW      1
 #define STEP_PULSE_US  3
@@ -30,6 +31,9 @@ void stepperInit(stepper_t *hw);
 void stepperSetDir(stepper_t *hw, uint8_t dir);
 int  stepperSingleStep(stepper_t *hw);
 int  stepperMoveSteps(stepper_t *hw, uint32_t steps, uint32_t period_us);
+int  stepperStartMoveTimer(stepper_t *hw, uint32_t steps, uint32_t period_us);
+bool stepperIsMoveActive(const stepper_t *hw);
+void stepperStopMoveTimer(stepper_t *hw);
 void stepperSleep(stepper_t *hw);
 int  stepperWake(stepper_t *hw);
 void stepperReset(stepper_t *hw);
