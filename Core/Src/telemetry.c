@@ -1,6 +1,7 @@
 // telemetry.c
 #include "telemetry.h"
 
+#include "AB-Threads.h"
 #include "app_threadx.h"
 #include "can_bus.h"
 #include "main.h"
@@ -95,6 +96,11 @@ static UNUSED_FUNCTION int32_t g_can_side_id = -1;
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 static int32_t g_telemetry_init_error_code = TELEMETRY_INIT_OK;
+static volatile uint32_t g_flight_state_handler_count = 0U;
+static volatile uint32_t g_flight_state_handler_error_count = 0U;
+static volatile uint8_t g_last_flight_state_packet = 0U;
+static volatile uint32_t g_heartbeat_handler_count = 0U;
+static volatile uint32_t g_heartbeat_handler_error_count = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 
@@ -188,6 +194,11 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
 {
   (void)user;
 
+  if (thread_comm_get_abort() != 0U)
+  {
+    return SEDS_OK;
+  }
+
   if (pkt == NULL)
   {
     return SEDS_BAD_ARG;
@@ -214,7 +225,7 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
       .timestamp_ms = pkt->timestamp,
   };
 
-  if (thread_comm_send(msg, TX_NO_WAIT) != TX_SUCCESS)
+  if (thread_comm_send(msg, TX_WAIT_FOREVER) != TX_SUCCESS)
   {
     return SEDS_ERR;
   }
@@ -226,7 +237,66 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
 {
   (void)pkt;
   (void)user;
-  thread_comm_set_abort(true);
+  (void)thread_comm_set_abort(true);
+  main_task_force_outputs_safe_off();
+  return SEDS_OK;
+}
+
+SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
+{
+  (void)user;
+
+  if (thread_comm_get_abort() != 0U)
+  {
+    return SEDS_OK;
+  }
+
+  if (pkt == NULL || pkt->payload == NULL || pkt->data_size == 0U)
+  {
+    g_flight_state_handler_error_count++;
+    return SEDS_BAD_ARG;
+  }
+
+  uint8_t flight_state;
+  int32_t got = seds_pkt_get_u8(pkt, &flight_state, 1U);
+  if (got != 1)
+  {
+    g_flight_state_handler_error_count++;
+    return (got < 0) ? (SedsResult)got : SEDS_BAD_ARG;
+  }
+
+  g_flight_state_handler_count++;
+  g_last_flight_state_packet = flight_state;
+
+  if (thread_comm_set_flight_state(flight_state) != TX_SUCCESS)
+  {
+    g_flight_state_handler_error_count++;
+  }
+
+  return SEDS_OK;
+}
+
+SedsResult Heartbeat_handler(const SedsPacketView *pkt, void *user)
+{
+  (void)user;
+
+  if (thread_comm_get_abort() != 0U)
+  {
+    return SEDS_OK;
+  }
+
+  if (pkt == NULL || pkt->ty != SEDS_DT_HEARTBEAT)
+  {
+    g_heartbeat_handler_error_count++;
+    return SEDS_BAD_ARG;
+  }
+
+  g_heartbeat_handler_count++;
+  if (thread_comm_note_groundstation_heartbeat(telemetry_now_ms()) != TX_SUCCESS)
+  {
+    g_heartbeat_handler_error_count++;
+  }
+
   return SEDS_OK;
 }
 
@@ -497,6 +567,18 @@ SedsResult init_telemetry_router(void)
       {
           .endpoint = SEDS_EP_ABORT,
           .packet_handler = Abort_handler,
+          .serialized_handler = NULL,
+          .user = NULL,
+      },
+      {
+          .endpoint = SEDS_EP_FLIGHT_STATE,
+          .packet_handler = Flight_State_handler,
+          .serialized_handler = NULL,
+          .user = NULL,
+      },
+      {
+          .endpoint = SEDS_EP_HEART_BEAT,
+          .packet_handler = Heartbeat_handler,
           .serialized_handler = NULL,
           .user = NULL,
       }};

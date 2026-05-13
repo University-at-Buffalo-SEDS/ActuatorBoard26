@@ -17,6 +17,31 @@ typedef struct {
     uint64_t timestamp_ms;
 } thread_comm_msg_t;
 
+typedef enum {
+    ACTUATOR_FLIGHT_STATE_STARTUP = 0,
+    ACTUATOR_FLIGHT_STATE_IDLE = 1,
+    ACTUATOR_FLIGHT_STATE_PREFILL = 2,
+    ACTUATOR_FLIGHT_STATE_FILL_TEST = 3,
+    ACTUATOR_FLIGHT_STATE_NITROGEN_FILL = 4,
+    ACTUATOR_FLIGHT_STATE_NITROUS_FILL = 5,
+    ACTUATOR_FLIGHT_STATE_POSTINIT = 6,
+    ACTUATOR_FLIGHT_STATE_ARMED = 7,
+    ACTUATOR_FLIGHT_STATE_LAUNCH = 8,
+    ACTUATOR_FLIGHT_STATE_ASCENT = 9,
+    ACTUATOR_FLIGHT_STATE_COAST = 10,
+    ACTUATOR_FLIGHT_STATE_APOGEE = 11,
+    ACTUATOR_FLIGHT_STATE_DESCENT = 12,
+    ACTUATOR_FLIGHT_STATE_REEFING = 13,
+    ACTUATOR_FLIGHT_STATE_LANDED = 14,
+    ACTUATOR_FLIGHT_STATE_RECOVERY = 15,
+} actuator_flight_state_t;
+
+typedef struct {
+    uint8_t n20_on;
+    uint8_t n2_on;
+    uint8_t igniter_on;
+} thread_comm_expected_outputs_t;
+
 /**
  * @brief Create the shared queue and state protection mutex.
  *
@@ -55,12 +80,13 @@ UINT thread_comm_send(thread_comm_msg_t msg, ULONG wait_option);
 UINT thread_comm_receive(thread_comm_msg_t *msg, ULONG wait_option);
 
 /**
- * @brief Update the shared abort flag.
+ * @brief Latch the shared abort flag.
  *
  * The flag is protected by a mutex so one thread can request an abort while
- * other threads read a consistent value.
+ * other threads read a consistent value. Once set, the flag remains latched
+ * until the board is power cycled.
  *
- * @param abort_requested Non-zero sets the flag, zero clears it.
+ * @param abort_requested Non-zero sets the flag, zero is ignored.
  * @retval TX_SUCCESS Flag updated successfully.
  * @retval ThreadX error code Mutex access failed.
  */
@@ -89,6 +115,16 @@ UINT thread_comm_set_shared_value(int32_t value);
  * initialized.
  */
 int32_t thread_comm_get_shared_value(void);
+
+UINT thread_comm_set_flight_state(uint8_t flight_state);
+uint8_t thread_comm_get_flight_state(void);
+uint8_t thread_comm_abort_allowed(void);
+
+UINT thread_comm_set_expected_outputs(uint8_t n20_on, uint8_t n2_on, uint8_t igniter_on);
+thread_comm_expected_outputs_t thread_comm_get_expected_outputs(void);
+
+UINT thread_comm_note_groundstation_heartbeat(uint64_t timestamp_ms);
+uint64_t thread_comm_get_groundstation_heartbeat_ms(void);
 
 #ifdef __cplusplus
 }

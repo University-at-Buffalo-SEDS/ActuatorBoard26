@@ -54,9 +54,10 @@ void telemetry_thread_entry(ULONG initial_input)
     {
 
         can_bus_process_rx();
+        (void)process_rx_queue_timeout(0);
         (void)telemetry_poll_discovery();
-        (void)process_all_queues_timeout(0);
         (void)telemetry_poll_timesync();
+        (void)dispatch_tx_queue_timeout(0);
         tx_thread_sleep(1);
     }
 #else

@@ -17,15 +17,20 @@ TX_THREAD main_task_thread;
 #define LAUNCH_SEQUENCE_RESTART_HOLDOFF_MS 1500U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS 5000U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_FUTURE_MS 1000U
+#define PLUMBING_RETRACT_STEPS 40000U
+#define PLUMBING_RETRACT_STEP_PERIOD_US 80U
+#define PLUMBING_RETRACT_SERVICE_STEPS 50U
 
 static uint8_t g_aborted = 0U;
 static uint8_t g_igniter_on = 0U;
 static uint8_t g_nitrogen_open = 0U;
 static uint8_t g_nitrous_open = 0U;
 static uint8_t g_plumbing_retracted = 0U;
+static uint8_t g_plumbing_retract_active = 0U;
 static uint8_t g_launch_sequence_active = 0U;
 static uint8_t g_launch_sequence_igniter_started = 0U;
 static uint8_t g_launch_sequence_holdoff_active = 0U;
+static uint32_t g_plumbing_retract_steps_remaining = 0U;
 static ULONG g_launch_sequence_igniter_start_ticks = 0U;
 static ULONG g_launch_sequence_igniter_stop_ticks = 0U;
 static ULONG g_launch_sequence_holdoff_start_ticks = 0U;
@@ -40,6 +45,11 @@ static void publish_all_umbilical_statuses(void)
     (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
     (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
     (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+}
+
+static void publish_expected_outputs(void)
+{
+    (void)thread_comm_set_expected_outputs(g_nitrous_open, g_nitrogen_open, g_igniter_on);
 }
 
 static void publish_umbilical_statuses_if_due(ULONG *last_status_ticks)
@@ -68,6 +78,7 @@ static uint8_t igniter_on(void)
         if (was_on == 0U)
         {
             (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+            publish_expected_outputs();
         }
         return 1U;
     }
@@ -80,25 +91,79 @@ static void igniter_off(void)
     igniterOff(&igniter);
     g_igniter_on = 0U;
     (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+    publish_expected_outputs();
 }
 
-static void force_abort_outputs_off(void)
+void main_task_force_outputs_safe_off(void)
 {
     g_launch_sequence_active = 0U;
     g_launch_sequence_igniter_started = 0U;
     g_launch_sequence_holdoff_active = 0U;
+    g_plumbing_retract_active = 0U;
+    g_plumbing_retract_steps_remaining = 0U;
 
-    igniter_off();
-    solenoidOff(&n2_solenoid);
-    solenoidOff(&n20_solenoid);
+    HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(N2_SIG_GPIO_Port, N2_SIG_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(N20_SIG_GPIO_Port, N20_SIG_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
     stepperSleep(&stepper);
 
-    HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
-
+    g_igniter_on = 0U;
     g_nitrogen_open = 0U;
     g_nitrous_open = 0U;
-    (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
-    (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+    publish_expected_outputs();
+}
+
+static void start_plumbing_retract(void)
+{
+    if (g_plumbing_retract_active != 0U)
+    {
+        return;
+    }
+
+    stepperSetDir(&stepper, STEP_CW);
+    stepperWake(&stepper);
+    g_plumbing_retract_steps_remaining = PLUMBING_RETRACT_STEPS;
+    g_plumbing_retract_active = 1U;
+}
+
+static void service_plumbing_retract(void)
+{
+    if (g_plumbing_retract_active == 0U)
+    {
+        return;
+    }
+
+    if (thread_comm_get_abort() != 0U)
+    {
+        main_task_force_outputs_safe_off();
+        return;
+    }
+
+    uint32_t steps = g_plumbing_retract_steps_remaining;
+    if (steps > PLUMBING_RETRACT_SERVICE_STEPS)
+    {
+        steps = PLUMBING_RETRACT_SERVICE_STEPS;
+    }
+
+    if (stepperMoveSteps(&stepper, steps, PLUMBING_RETRACT_STEP_PERIOD_US) != STEP_OK)
+    {
+        g_plumbing_retract_active = 0U;
+        g_plumbing_retract_steps_remaining = 0U;
+        stepperSleep(&stepper);
+        return;
+    }
+
+    g_plumbing_retract_steps_remaining -= steps;
+    if (g_plumbing_retract_steps_remaining == 0U)
+    {
+        stepperSleep(&stepper);
+        g_plumbing_retract_active = 0U;
+        g_plumbing_retracted = 1U;
+        (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+    }
 }
 
 static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
@@ -194,12 +259,22 @@ static void service_launch_sequence(void)
 
 static void handle_command(thread_comm_msg_t cmd)
 {
+    if (thread_comm_get_abort() != 0U)
+    {
+        main_task_force_outputs_safe_off();
+        return;
+    }
+
     switch (cmd.cmd){
     case CMD_IGNITER_ON:
         g_launch_sequence_active = 0U;
         g_launch_sequence_igniter_started = 0U;
         g_launch_sequence_holdoff_active = 0U;
         igniter_on();
+        if (thread_comm_get_abort() != 0U)
+        {
+            main_task_force_outputs_safe_off();
+        }
         break;
 
     case CMD_IGNITER_OFF:
@@ -210,36 +285,47 @@ static void handle_command(thread_comm_msg_t cmd)
         break;
 
     case CMD_NITROGEN_OPEN:
-        solenoidOn(&n2_solenoid);
-        g_nitrogen_open = 1U;
-        (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+        if (solenoidOn(&n2_solenoid) == 0)
+        {
+            g_nitrogen_open = 1U;
+            (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+            publish_expected_outputs();
+        }
+        if (thread_comm_get_abort() != 0U)
+        {
+            main_task_force_outputs_safe_off();
+        }
         break;
 
     case CMD_NITROGEN_CLOSE:
         solenoidOff(&n2_solenoid);
         g_nitrogen_open = 0U;
         (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+        publish_expected_outputs();
         break;
 
     case CMD_NITROUS_OPEN:
-        solenoidOn(&n20_solenoid);
-        g_nitrous_open = 1U;
-        (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+        if (solenoidOn(&n20_solenoid) == 0)
+        {
+            g_nitrous_open = 1U;
+            (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+            publish_expected_outputs();
+        }
+        if (thread_comm_get_abort() != 0U)
+        {
+            main_task_force_outputs_safe_off();
+        }
         break;
 
     case CMD_NITROUS_CLOSE:
         solenoidOff(&n20_solenoid);
         g_nitrous_open = 0U;
         (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+        publish_expected_outputs();
         break;
 
     case CMD_RETRACT_PLUMBING:
-        stepperSetDir(&stepper, STEP_CW);
-        stepperWake(&stepper);
-        stepperMoveSteps(&stepper, 20000, 80);
-        stepperSleep(&stepper);
-        g_plumbing_retracted = 1U;
-        (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+        start_plumbing_retract();
         break;
 
     case CMD_IGNITER_SEQUENCE:
@@ -263,20 +349,25 @@ void main_task_entry(ULONG initial_input)
     ULONG last_umbilical_status_ticks = tx_time_get();
 
     publish_all_umbilical_statuses();
+    publish_expected_outputs();
 
     for (;;)
     {
         if (thread_comm_get_abort() != 0U)
         {
+            main_task_force_outputs_safe_off();
+
             if (g_aborted == 0U)
             {
-                force_abort_outputs_off();
+                (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+                (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+                (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
                 g_aborted = 1U;
             }
 
             while (thread_comm_receive(&msg, TX_NO_WAIT) == TX_SUCCESS)
             {
-                // Dump any pending messages bc we ABORTING!!!!!!!
+                // Drop pending commands while abort is latched.
             }
 
             publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
@@ -290,6 +381,7 @@ void main_task_entry(ULONG initial_input)
         }
 
         service_launch_sequence();
+        service_plumbing_retract();
         publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
 
         tx_thread_sleep(1);

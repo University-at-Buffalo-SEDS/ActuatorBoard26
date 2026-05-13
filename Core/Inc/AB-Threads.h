@@ -12,6 +12,7 @@ UINT create_telemetry_thread(TX_BYTE_POOL *byte_pool);
 extern TX_THREAD main_task_thread;
 
 void main_task_entry(ULONG initial_input);
+void main_task_force_outputs_safe_off(void);
 UINT create_main_task(TX_BYTE_POOL *byte_pool);
 /* ------ Main Task ------ */
 
