@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "ux_api.h"
 #include "ux_device_class_cdc_acm.h"
+#include "stepper_driver.h"
 #include <stdint.h>
 #include <stdio.h>
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
@@ -807,6 +808,7 @@ int fputc(int ch, FILE *f)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
+  stepperTimerPeriodElapsedCallback(htim);
 
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6)

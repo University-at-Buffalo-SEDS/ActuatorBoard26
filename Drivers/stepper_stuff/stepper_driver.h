@@ -34,6 +34,7 @@ int  stepperMoveSteps(stepper_t *hw, uint32_t steps, uint32_t period_us);
 int  stepperStartMoveTimer(stepper_t *hw, uint32_t steps, uint32_t period_us);
 bool stepperIsMoveActive(const stepper_t *hw);
 void stepperStopMoveTimer(stepper_t *hw);
+void stepperTimerPeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void stepperSleep(stepper_t *hw);
 int  stepperWake(stepper_t *hw);
 void stepperReset(stepper_t *hw);
