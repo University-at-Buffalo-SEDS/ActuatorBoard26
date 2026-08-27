@@ -44,7 +44,7 @@ endif()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 9d4f44f9142be75108361f1c85bde2dbf19e5a23
+    GIT_TAG 8634d554f3f32b5cc4aba7791f074c2a62ee1972
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -52,10 +52,18 @@ if(NOT sedslaunchcore_POPULATED)
     FetchContent_Populate(sedslaunchcore)
 endif()
 
+include("${sedslaunchcore_SOURCE_DIR}/cmake/launchcore_stm32.cmake")
+launchcore_generate_linker_scripts(
+    BSP_CONFIG "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h"
+    LAYOUT_PREFIX ACTUATOR
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launchcore-linker"
+    OUT_BOOTLOADER_SCRIPT LAUNCHCORE_BOOTLOADER_LINKER
+    OUT_APPLICATION_SCRIPT LAUNCHCORE_APPLICATION_LINKER)
+
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-    -T "${CMAKE_SOURCE_DIR}/STM32G491XX_FLASH.ld"
+    -T "${LAUNCHCORE_APPLICATION_LINKER}"
 )
 # LaunchCore leaves only 472 KiB for the packaged application. Keep C sources
 # size-optimized in Debug too (debug symbols remain available).
@@ -211,8 +219,7 @@ target_compile_definitions(ActuationBoardBootloader PRIVATE
     STM32G491xx
 )
 target_link_options(ActuationBoardBootloader PRIVATE
-    -T "${CMAKE_SOURCE_DIR}/Bootloader/linker_bootloader.ld"
-    --specs=nosys.specs
+    -T "${LAUNCHCORE_BOOTLOADER_LINKER}"
     -Wl,-Map=ActuationBoardBootloader.map
     -Wl,--gc-sections
     -Wl,--print-memory-usage
@@ -259,6 +266,15 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(factory-image ALL DEPENDS "${ACTUATOR_FACTORY_IMAGE}")
+launchcore_add_memory_report(
+    NAME launchcore-memory-report
+    BOOTLOADER_TARGET ActuationBoardBootloader
+    APPLICATION_TARGET ${CMAKE_PROJECT_NAME}
+    BOOTLOADER_BINARY "${ACTUATOR_BOOTLOADER_BIN}"
+    FIRMWARE_BINARY "${ACTUATOR_APP_BIN}"
+    BOOTLOADER_CAPACITY 0x4000
+    FIRMWARE_CAPACITY 0x73F00
+    TOTAL_FLASH_SIZE 0x80000)
 
 set(LAUNCHCORE_DELTA_BASE_IMAGE "" CACHE FILEPATH
     "Previously installed .launchcore.img used to generate a reversible OTA delta")

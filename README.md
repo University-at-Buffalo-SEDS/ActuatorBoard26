@@ -4,6 +4,11 @@ This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
 image. CMake fetches pinned upstream revisions of both dependencies during
 configure; no Git submodules are required.
 
+LaunchCore generates both GNU linker scripts directly from
+`Bootloader/board_config.h`. Named linker regions distinguish bootloader and
+firmware usage, and the final memory-report target prints their combined flash
+usage.
+
 ## Build
 
 ```sh

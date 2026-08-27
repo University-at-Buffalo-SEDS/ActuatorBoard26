@@ -50,8 +50,11 @@ class FirmwareContracts(unittest.TestCase):
             self.assertEqual(base % 0x800, 0)
         self.assertEqual(regions[-1][0] + regions[-1][1], 0x08080000)
 
-        app_linker = (ROOT / "STM32G491XX_FLASH.ld").read_text()
-        self.assertIn("ORIGIN = 0x08004100, LENGTH = 0x73F00", app_linker)
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn("launchcore_generate_linker_scripts", cmake)
+        self.assertIn("LAYOUT_PREFIX ACTUATOR", cmake)
+        self.assertFalse((ROOT / "STM32G491XX_FLASH.ld").exists())
+        self.assertFalse((ROOT / "Bootloader/linker_bootloader.ld").exists())
 
     def test_ota_is_delta_only_and_full_images_use_recovery(self):
         ota = (ROOT / "Core/Src/ota_stream.c").read_text()
@@ -71,7 +74,7 @@ class FirmwareContracts(unittest.TestCase):
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
         self.assertIn("a0db2b554e3f115a76bf3913cfca9e0664837e36", cmake)
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
-        self.assertIn("9d4f44f9142be75108361f1c85bde2dbf19e5a23", cmake)
+        self.assertIn("8634d554f3f32b5cc4aba7791f074c2a62ee1972", cmake)
 
     def test_telemetry_callback_never_waits_forever_on_full_command_queue(self):
         telemetry = (ROOT / "Core/Src/telemetry.c").read_text()
