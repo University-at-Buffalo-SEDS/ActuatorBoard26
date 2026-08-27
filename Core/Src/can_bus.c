@@ -172,6 +172,7 @@ typedef struct {
 
 static volatile uint16_t g_rx_head = 0;
 static volatile uint16_t g_rx_tail = 0;
+static volatile uint32_t g_rx_dropped_frames = 0;
 static can_bus_rx_frame_t g_rx_ring[CAN_BUS_RX_RING_DEPTH];
 
 static inline uint16_t rb_next(uint16_t v) {
@@ -187,20 +188,20 @@ static inline int __attribute__((unused)) rb_is_empty(void) {
 
 static inline int rb_is_full(void) { return rb_next(g_rx_head) == g_rx_tail; }
 
-// Push frame from ISR. Drop-oldest on overflow (hybrid “stay current”
-// behavior).
+// Push frame from ISR. Drop the incoming frame on overflow. In a single-
+// producer/single-consumer ring, only the consumer may advance tail; allowing
+// the ISR to change it races the consumer and can eventually corrupt the ring.
 //
 // Memory ordering:
 //  - We must ensure slot writes are visible before publishing head.
 //  - `__DMB()` acts as a release barrier here.
-static inline void rb_push_drop_oldest(uint32_t std_id, const uint8_t *data,
-                                       uint8_t len) {
+static inline void rb_push(uint32_t std_id, const uint8_t *data, uint8_t len) {
   if (len > 64)
     len = 64;
 
   if (rb_is_full()) {
-    // drop oldest
-    g_rx_tail = rb_next(g_rx_tail);
+    g_rx_dropped_frames++;
+    return;
   }
 
   uint16_t h = g_rx_head;
@@ -288,8 +289,8 @@ static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t rx_fifo)
       break;
     }
 
-    rb_push_drop_oldest(hdr.Identifier & 0x7FFu, data,
-                        (uint8_t)can_bus_dlc_to_len(hdr.DataLength));
+    rb_push(hdr.Identifier & 0x7FFu, data,
+            (uint8_t)can_bus_dlc_to_len(hdr.DataLength));
   }
 }
 
@@ -471,6 +472,7 @@ void can_bus_init(FDCAN_HandleTypeDef *hfdcan) {
   // reset rings + reasm
   g_rx_head = 0;
   g_rx_tail = 0;
+  g_rx_dropped_frames = 0;
   for (unsigned i = 0; i < CAN_BUS_REASM_SLOTS; i++) {
     reasm_reset(&g_reasm[i]);
   }
@@ -617,10 +619,23 @@ void can_bus_process_rx(void) {
   reasm_expire_old(now);
 
   can_bus_rx_frame_t f;
-  while (rb_pop(&f)) {
+  /* Bound each pass so sustained CAN traffic cannot starve SEDSNet polling,
+   * time sync, command handling, and the thread's scheduler yield. */
+  for (uint32_t processed = 0; processed < CAN_BUS_RX_RING_DEPTH; ++processed) {
+    if (!rb_pop(&f))
+      break;
     handle_rx_frame(&f, now);
   }
 }
+
+uint32_t can_bus_rx_dropped_frames(void) { return g_rx_dropped_frames; }
+
+#ifdef CAN_BUS_TEST
+void can_bus_test_inject(uint32_t std_id, const uint8_t *data, size_t len)
+{
+  rb_push(std_id, data, (uint8_t)((len > 64U) ? 64U : len));
+}
+#endif
 
 // =========================
 // HAL ISR callback

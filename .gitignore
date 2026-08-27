@@ -82,6 +82,7 @@ __pycache__/
 # Other caches
 .cache/
 .pytest_cache/
+**/target/
 
 # Deployment / flashing artifacts
 *.hex

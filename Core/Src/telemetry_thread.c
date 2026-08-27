@@ -5,6 +5,7 @@
 #include "can_bus.h"
 #include "thread_comm.h"
 #include "main.h"
+#include "ota_stream.h"
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
 
@@ -57,6 +58,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)process_rx_queue_timeout(0);
         (void)telemetry_poll_discovery();
         (void)telemetry_poll_timesync();
+        ota_stream_poll();
         (void)dispatch_tx_queue_timeout(0);
         tx_thread_sleep(1);
     }

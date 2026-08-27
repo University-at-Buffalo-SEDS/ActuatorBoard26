@@ -1,11 +1,12 @@
 // telemetry.c
 #include "telemetry.h"
+#include "ota_stream.h"
 
 #include "AB-Threads.h"
 #include "app_threadx.h"
 #include "can_bus.h"
 #include "main.h"
-#include "sedsprintf.h"
+#include "sedsnet_config.h"
 #include "stm32g4xx_hal.h"
 
 #include <stdarg.h>
@@ -101,6 +102,7 @@ static volatile uint32_t g_flight_state_handler_error_count = 0U;
 static volatile uint8_t g_last_flight_state_packet = 0U;
 static volatile uint32_t g_heartbeat_handler_count = 0U;
 static volatile uint32_t g_heartbeat_handler_error_count = 0U;
+static volatile uint32_t g_command_queue_drop_count = 0U;
 
 RouterState g_router = {.r = NULL, .created = 0U, .start_time = 0ULL};
 
@@ -203,7 +205,7 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   {
     return SEDS_BAD_ARG;
   }
-  if (pkt->payload == NULL || pkt->data_size == 0U)
+  if (pkt->payload == NULL || pkt->payload_len == 0U)
   {
     return SEDS_BAD_ARG;
   }
@@ -225,8 +227,12 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
       .timestamp_ms = pkt->timestamp,
   };
 
-  if (thread_comm_send(msg, TX_WAIT_FOREVER) != TX_SUCCESS)
+  /* A full command queue must not block the telemetry worker indefinitely.
+   * Blocking here prevents CAN draining, discovery, time sync, and all future
+   * commands, which presents as the board becoming unresponsive over time. */
+  if (thread_comm_send(msg, TX_NO_WAIT) != TX_SUCCESS)
   {
+    g_command_queue_drop_count++;
     return SEDS_ERR;
   }
 
@@ -250,7 +256,7 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
     return SEDS_OK;
   }
 
-  if (pkt == NULL || pkt->payload == NULL || pkt->data_size == 0U)
+  if (pkt == NULL || pkt->payload == NULL || pkt->payload_len == 0U)
   {
     g_flight_state_handler_error_count++;
     return SEDS_BAD_ARG;
@@ -438,12 +444,12 @@ void rx_asynchronous(const uint8_t *bytes, size_t len)
 
   if (g_can_side_id >= 0)
   {
-    result = seds_router_rx_serialized_packet_to_queue_from_side(
+    result = seds_router_rx_packed_packet_to_queue_from_side(
         g_router.r, (uint32_t)g_can_side_id, bytes, len);
   }
   else
   {
-    result = seds_router_rx_serialized_packet_to_queue(g_router.r, bytes, len);
+    result = seds_router_rx_packed_packet_to_queue(g_router.r, bytes, len);
   }
 
   (void)result;
@@ -469,12 +475,11 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len)
 
   if (g_can_side_id >= 0)
   {
-    (void)seds_router_receive_serialized_from_side(g_router.r, (uint32_t)g_can_side_id, bytes,
-                                                   len);
+    (void)seds_router_receive_packed_from_side(g_router.r, (uint32_t)g_can_side_id, bytes, len);
   }
   else
   {
-    (void)seds_router_receive_serialized(g_router.r, bytes, len);
+    (void)seds_router_receive_packed(g_router.r, bytes, len);
   }
 #endif
 }
@@ -565,25 +570,25 @@ SedsResult init_telemetry_router(void)
       {
           .endpoint = SEDS_EP_ACTUATOR_BOARD,
           .packet_handler = Valve_Command_handler,
-          .serialized_handler = NULL,
+          .packed_handler = NULL,
           .user = NULL,
       },
       {
           .endpoint = SEDS_EP_ABORT,
           .packet_handler = Abort_handler,
-          .serialized_handler = NULL,
+          .packed_handler = NULL,
           .user = NULL,
       },
       {
           .endpoint = SEDS_EP_FLIGHT_STATE,
           .packet_handler = Flight_State_handler,
-          .serialized_handler = NULL,
+          .packed_handler = NULL,
           .user = NULL,
       },
       {
           .endpoint = SEDS_EP_HEART_BEAT,
           .packet_handler = Heartbeat_handler,
-          .serialized_handler = NULL,
+          .packed_handler = NULL,
           .user = NULL,
       }};
 
@@ -600,7 +605,7 @@ SedsResult init_telemetry_router(void)
     return SEDS_ERR;
   }
 
-  g_can_side_id = seds_router_add_side_serialized(r, "can", 3U, tx_send, NULL, true);
+  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, true);
   if (g_can_side_id < 0)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_ADD_CAN_SIDE_FAILED;
@@ -614,6 +619,19 @@ SedsResult init_telemetry_router(void)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_CONFIGURE_TIMESYNC_FAILED;
     printf("Error %ld: failed to configure telemetry timesync: %d\r\n",
+           (long)g_telemetry_init_error_code, (int)result);
+    seds_router_free(r);
+    g_router.r = NULL;
+    g_router.created = 0U;
+    g_can_side_id = -1;
+    return result;
+  }
+
+  result = ota_stream_init(r);
+  if (result != SEDS_OK)
+  {
+    g_telemetry_init_error_code = TELEMETRY_INIT_OTA_FAILED;
+    printf("Error %ld: failed to bind OTA stream: %d\r\n",
            (long)g_telemetry_init_error_code, (int)result);
     seds_router_free(r);
     g_router.r = NULL;

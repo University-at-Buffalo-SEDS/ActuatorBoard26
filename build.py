@@ -130,6 +130,51 @@ def popen(ui: UI, cmd: list[str], cwd: Optional[Path] = None) -> subprocess.Pope
                             f"Make sure it's installed and on PATH.")
 
 
+def run_host_tests(ui: UI, repo_root: Path) -> None:
+    test_build = repo_root / "build" / "host-tests"
+    test_build.mkdir(parents=True, exist_ok=True)
+    cc = os.environ.get("CC", "cc")
+    common = [cc, "-std=c11", "-Wall", "-Wextra", "-Werror"]
+
+    can_test = test_build / "test_can_bus"
+    run(ui, [
+        *common,
+        "-DCAN_BUS_TEST",
+        "-I", str(repo_root / "tests" / "mocks"),
+        "-I", str(repo_root / "Core" / "Inc"),
+        str(repo_root / "Core" / "Src" / "can_bus.c"),
+        str(repo_root / "tests" / "test_can_bus.c"),
+        "-o", str(can_test),
+    ], cwd=repo_root)
+    run(ui, [str(can_test)], cwd=repo_root)
+
+    comm_test = test_build / "test_thread_comm"
+    run(ui, [
+        *common,
+        "-I", str(repo_root / "tests" / "mocks"),
+        "-I", str(repo_root / "Core" / "Inc"),
+        str(repo_root / "Core" / "Src" / "thread_comm.c"),
+        str(repo_root / "tests" / "test_thread_comm.c"),
+        "-o", str(comm_test),
+    ], cwd=repo_root)
+    run(ui, [str(comm_test)], cwd=repo_root)
+
+    output_test = test_build / "test_output_drivers"
+    run(ui, [
+        *common,
+        "-I", str(repo_root / "tests" / "mocks"),
+        "-I", str(repo_root / "Drivers" / "sol_stuff"),
+        "-I", str(repo_root / "Drivers" / "spark_stuff"),
+        str(repo_root / "Drivers" / "sol_stuff" / "solenoid_driver.c"),
+        str(repo_root / "Drivers" / "spark_stuff" / "igniter_driver.c"),
+        str(repo_root / "tests" / "test_output_drivers.c"),
+        "-o", str(output_test),
+    ], cwd=repo_root)
+    run(ui, [str(output_test)], cwd=repo_root)
+    run(ui, [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
+        cwd=repo_root)
+
+
 def find_repo_root(start: Path) -> Path:
     p = start.resolve()
     for cand in [p, *p.parents]:
@@ -448,8 +493,14 @@ def make_parser() -> argparse.ArgumentParser:
 
     f.add_argument("--method", choices=["dfu", "st-flash", "st-util", "stlink-gdbserver", "stm32prog-cli"], default="st-flash",
                    help="Flashing method.")
-    f.add_argument("--addr", default="0x08000000", help="Flash base address (default: 0x08000000)")
+    f.add_argument("--addr", default=None,
+                   help="Flash base address (default: factory 0x08000000, app-only 0x08004000)")
     f.add_argument("--no-reset", action="store_true", help="Do not reset after flash (st-flash/stm32prog-cli).")
+    f.add_argument("--app-only", action="store_true",
+                   help="Flash only the packaged LaunchCore application; default flashes the complete factory image.")
+
+    t = sub.add_parser("test", help="Run host unit and firmware contract tests")
+    add_mode_and_common(t)
 
     # st-util options
     f.add_argument("--host", default="127.0.0.1", help="GDB server host (default: 127.0.0.1)")
@@ -509,6 +560,10 @@ def main() -> None:
 
     cfg = build_cfg_from_args(ui, args)
 
+    if args.cmd == "test":
+        run_host_tests(ui, cfg.repo_root)
+        return
+
     if args.cmd == "build":
         configure_and_build(ui, cfg)
         return
@@ -516,8 +571,19 @@ def main() -> None:
     if args.cmd == "flash":
         elf, bin_path = configure_and_build(ui, cfg)
 
+        if not args.app_only:
+            factory_image = elf.parent / f"{cfg.project_name}.factory.bin"
+            if not factory_image.is_file():
+                raise FriendlyError(f"LaunchCore factory image was not produced: {factory_image}")
+            bin_path = factory_image
+        else:
+            app_image = elf.parent / f"{cfg.project_name}.launchcore.img"
+            if not app_image.is_file():
+                raise FriendlyError(f"Packaged LaunchCore application was not produced: {app_image}")
+            bin_path = app_image
+
         method = args.method
-        addr = args.addr
+        addr = args.addr or ("0x08004000" if args.app_only else "0x08000000")
 
         if method == "dfu":
             flash_dfu(ui, bin_path, addr)

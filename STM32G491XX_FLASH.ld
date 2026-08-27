@@ -55,8 +55,10 @@ ENTRY(Reset_Handler)
 /* Specify the memory areas */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 112K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 512K
+RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 112K
+/* LaunchCore owns 0x08000000..0x08004000. Its 0x100-byte image header is
+ * immediately before this vector table. Metadata begins at 0x0807E000. */
+FLASH (rx)      : ORIGIN = 0x08004100, LENGTH = 0x73F00
 }
 
 /* Highest address of the user mode stack */

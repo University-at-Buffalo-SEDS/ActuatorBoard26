@@ -1,5 +1,5 @@
 #pragma once
-#include "sedsprintf.h"
+#include "sedsnet_config.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -20,6 +20,7 @@ enum telemetry_init_error_code {
   TELEMETRY_INIT_ADD_CAN_SIDE_FAILED = -1003,
   TELEMETRY_INIT_CONFIGURE_TIMESYNC_FAILED = -1004,
   TELEMETRY_INIT_ANNOUNCE_DISCOVERY_FAILED = -1005,
+  TELEMETRY_INIT_OTA_FAILED = -1006,
 };
 
 extern RouterState g_router;
