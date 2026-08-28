@@ -275,6 +275,7 @@ launchcore_add_memory_report(
     BOOTLOADER_CAPACITY 0x4000
     FIRMWARE_CAPACITY 0x73F00
     TOTAL_FLASH_SIZE 0x80000)
+add_dependencies(factory-image launchcore-memory-report)
 
 set(LAUNCHCORE_DELTA_BASE_IMAGE "" CACHE FILEPATH
     "Previously installed .launchcore.img used to generate a reversible OTA delta")
