@@ -44,7 +44,7 @@ endif()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 6e74648b14378936867827bc744c31a4b3cb49e8
+    GIT_TAG 1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -243,7 +243,8 @@ add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
             --input "${ACTUATOR_APP_BIN}"
             --output "${ACTUATOR_APP_IMAGE}"
             --slot-base 0x08004000
-            --vector-table 0x08004100
+            --vector-table 0x08004200
+            --header-size 0x200
             --version "${LAUNCHCORE_APP_VERSION}"
             --xip
     VERBATIM
@@ -273,7 +274,7 @@ launchcore_add_memory_report(
     BOOTLOADER_BINARY "${ACTUATOR_BOOTLOADER_BIN}"
     FIRMWARE_BINARY "${ACTUATOR_APP_BIN}"
     BOOTLOADER_CAPACITY 0x4000
-    FIRMWARE_CAPACITY 0x73F00
+    FIRMWARE_CAPACITY 0x73E00
     TOTAL_FLASH_SIZE 0x80000)
 add_dependencies(factory-image launchcore-memory-report)
 

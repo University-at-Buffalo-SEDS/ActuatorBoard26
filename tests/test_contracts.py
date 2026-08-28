@@ -74,7 +74,7 @@ class FirmwareContracts(unittest.TestCase):
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
         self.assertIn("a0db2b554e3f115a76bf3913cfca9e0664837e36", cmake)
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
-        self.assertIn("6e74648b14378936867827bc744c31a4b3cb49e8", cmake)
+        self.assertIn("1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8", cmake)
 
     def test_telemetry_callback_never_waits_forever_on_full_command_queue(self):
         telemetry = (ROOT / "Core/Src/telemetry.c").read_text()
