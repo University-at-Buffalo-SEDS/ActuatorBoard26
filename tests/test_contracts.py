@@ -72,7 +72,7 @@ class FirmwareContracts(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertFalse((ROOT / ".gitmodules").exists())
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
-        self.assertIn("ef512087bc9d2104651dedb93626e6df256e4fb8", cmake)
+        self.assertIn("ec4d1a7c59646753a8f4e7da6b7f5c9e0f3e66d0", cmake)
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
         self.assertIn("1ab6cd3dcddb7acaacb9dbfc16159f36f19363a8", cmake)
 
