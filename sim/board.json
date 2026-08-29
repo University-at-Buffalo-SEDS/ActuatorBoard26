@@ -1,0 +1,42 @@
+{
+  "name": "ActuationBoard",
+  "architecture": "stm32g4",
+  "memory": {
+    "flash_base": 134217728,
+    "flash_size": 524288,
+    "ram_size": 114688,
+    "bootloader_size": 16384,
+    "slot_a_base": 134234112,
+    "slot_a_size": 475136,
+    "erase_size": 2048,
+    "write_alignment": 8,
+    "sedsnet_pool": 4096,
+    "delta_base": 134709248,
+    "delta_size": 24576
+  },
+  "artifacts": {
+    "firmware": "build/Release_Script/ActuationBoard.launchcore.img",
+    "bootloader": "build/Release_Script/ActuationBoardBootloader.bin",
+    "factory": "build/Release_Script/ActuationBoard.factory.bin",
+    "ota": "build/Release_Script/ActuationBoard.seds"
+  },
+  "traffic": {
+    "iterations": 100000,
+    "max_payload": 512,
+    "queue_depth": 0,
+    "immediate_dispatch": true
+  },
+  "ota": {
+    "chunk_size": 512
+  },
+  "peripherals": [
+    {
+      "type": "adc",
+      "name": "actuation_adc",
+      "bits": 12,
+      "channels": 8,
+      "failure_every": 997
+    }
+  ]
+}
+
