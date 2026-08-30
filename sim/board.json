@@ -23,6 +23,16 @@
     "factory": "build/Release_Script/ActuationBoard.factory.bin",
     "ota": "build/Release_Script/ActuationBoard.seds"
   },
+  "execution": {
+    "virtual_time_ms": 250,
+    "sample_count": 5,
+    "memory_probes": [
+      {"name": "allocation_failures", "symbol": "g_telemetry_alloc_fail", "maximum": 0},
+      {"name": "panics", "symbol": "g_telemetry_panic_count", "maximum": 0},
+      {"name": "mutex_get_failures", "symbol": "g_telemetry_lock_get_fail", "maximum": 0},
+      {"name": "mutex_put_failures", "symbol": "g_telemetry_lock_put_fail", "maximum": 0}
+    ]
+  },
   "board": {
     "strict_mmio": false,
     "clocks": [],
@@ -42,7 +52,7 @@
   "peripherals": [
     {
       "type": "adc",
-      "name": "actuation_adc1",
+      "name": "actuation_adc1_fault_injection",
       "model": "stm32_adc",
       "bus": "adc1",
       "bits": 12,

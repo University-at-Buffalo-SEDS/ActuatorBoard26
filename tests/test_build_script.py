@@ -41,6 +41,31 @@ class OtaBuildScriptTests(unittest.TestCase):
         for artifact in layout["artifacts"].values():
             self.assertEqual(Path(artifact).parts[1], "Selected_Test_Build")
 
+    def test_simulation_profiles_firmware_failure_counters(self):
+        from sim.run_full import load_layout_for_build
+
+        root = Path(build.__file__).resolve().parent
+        layout = load_layout_for_build(root, None)
+        probes = {
+            probe["symbol"]: probe.get("maximum")
+            for probe in layout["execution"]["memory_probes"]
+        }
+        self.assertEqual(
+            probes,
+            {
+                "g_telemetry_alloc_fail": 0,
+                "g_telemetry_panic_count": 0,
+                "g_telemetry_lock_get_fail": 0,
+                "g_telemetry_lock_put_fail": 0,
+            },
+        )
+        fault_devices = [
+            device for device in layout["peripherals"]
+            if device.get("failure_every") is not None
+        ]
+        self.assertEqual(len(fault_devices), 1)
+        self.assertIn("fault_injection", fault_devices[0]["name"])
+
     def test_all_tests_report_an_unavailable_docker_daemon(self):
         from sim import run_full
 
