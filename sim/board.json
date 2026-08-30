@@ -1,6 +1,7 @@
 {
   "name": "ActuationBoard",
   "architecture": "stm32g4",
+  "mcu": "stm32g491",
   "memory": {
     "flash_base": 134217728,
     "flash_size": 524288,
@@ -22,6 +23,13 @@
     "factory": "build/Release_Script/ActuationBoard.factory.bin",
     "ota": "build/Release_Script/ActuationBoard.seds"
   },
+  "board": {
+    "strict_mmio": false,
+    "clocks": [],
+    "connections": [],
+    "pins": [],
+    "dma_routes": []
+  },
   "traffic": {
     "iterations": 100000,
     "max_payload": 512,
@@ -39,6 +47,8 @@
       "bus": "adc1",
       "bits": 12,
       "channels": 3,
+      "channel_samples": [1024, 2048, 3072],
+      "noise_lsb": 2,
       "failure_every": 997
     },
     {
@@ -47,7 +57,9 @@
       "model": "stm32_adc",
       "bus": "adc2",
       "bits": 12,
-      "channels": 1
+      "channels": 1,
+      "channel_samples": [2048],
+      "noise_lsb": 2
     }
   ]
 }
