@@ -231,8 +231,9 @@ def _test_failure_help(stage: str) -> str:
         )
     if stage == "Network discovery and time sync":
         return (
-            "Check that this board and its RF/Power peer export network_ready, use the configured "
-            "FDCAN peripheral, and reach discovery plus a valid SEDSNet network clock."
+            "Check that this board and its configured peer use the configured FDCAN peripheral, "
+            "transmit and receive frames, and observe SEDSNet discovery. Time sync additionally "
+            "requires a clock-source node such as RFBoard or GroundStation."
         )
     return (
         "Review the simulator matrix above for the failing row. Check missing ELF symbols, "

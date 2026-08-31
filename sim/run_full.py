@@ -215,7 +215,12 @@ def _network_peer(repo_root: Path) -> tuple[str, Path]:
     current = json.loads(
         (repo_root / "sim" / "board.json").read_text(encoding="utf-8")
     )["name"]
-    peer_name = "PowerBoard26" if current == "RFBoard26" else "RFBoard26"
+    # Exercise the link this board uses in the vehicle. Actuation telemetry
+    # reaches GroundStation through Gateway, not through RFBoard directly.
+    if current == "ActuationBoard":
+        peer_name = "gateway-board26"
+    else:
+        peer_name = "PowerBoard26" if current == "RFBoard26" else "RFBoard26"
     configured = os.environ.get("SEDS_FIRMWARE_SIM_PEER_ROOT")
     if configured:
         peer_root = Path(configured).expanduser().resolve()
@@ -272,12 +277,25 @@ def run_network_simulation(
 
     current_layout = load_layout_for_build(repo_root, build_subdir)
     peer_layout = load_layout_for_build(peer_root, None)
+    network_probe_names = {
+        "discovery_seen",
+        "fdcan_rx",
+        "fdcan_tx_ok",
+        "fdcan_tx_fail",
+    }
     for layout in (current_layout, peer_layout):
         probes = layout.get("execution", {}).get("memory_probes", [])
-        layout["execution"]["memory_probes"] = [
-            probe for probe in probes
-            if probe.get("name") in {"network_ready", "discovery_seen", "timesync_valid"}
-        ]
+        selected_probes = []
+        for probe in probes:
+            if probe.get("name") not in network_probe_names:
+                continue
+            probe = dict(probe)
+            if probe["name"] in {"fdcan_rx", "fdcan_tx_ok"}:
+                probe["minimum"] = 1
+            if probe["name"] == "fdcan_tx_fail":
+                probe["maximum"] = 0
+            selected_probes.append(probe)
+        layout["execution"]["memory_probes"] = selected_probes
         layout["execution"]["memory_probe_warmup_samples"] = 3
     current_can = "fdcan2" if current_layout["architecture"] == "stm32g4" else "fdcan1"
     peer_can = "fdcan2"
@@ -296,9 +314,9 @@ def run_network_simulation(
             "name": "sedsnet_can", "kind": "can",
             "endpoints": [
                 {"node": "board", "peripheral": current_can,
-                 "activity_probe": "network_ready", "minimum_activity": 1},
+                 "activity_probe": "discovery_seen", "minimum_activity": 1},
                 {"node": "peer", "peripheral": peer_can,
-                 "activity_probe": "network_ready", "minimum_activity": 1},
+                 "activity_probe": "discovery_seen", "minimum_activity": 1},
             ],
         }],
     }
