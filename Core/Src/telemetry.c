@@ -114,7 +114,6 @@ volatile uint32_t g_telemetry_network_ready = 0U;
 volatile uint32_t g_telemetry_rx_packets = 0U;
 volatile uint32_t g_telemetry_rx_errors = 0U;
 volatile uint32_t g_telemetry_timesync_poll_errors = 0U;
-static int32_t g_telemetry_discovery_baseline_len = -1;
 
 int32_t telemetry_get_init_error_code(void) { return g_telemetry_init_error_code; }
 
@@ -467,6 +466,15 @@ void rx_asynchronous(const uint8_t *bytes, size_t len)
   {
     g_telemetry_rx_errors++;
   }
+  else
+  {
+    /* A successfully decoded packet from the CAN side proves that another
+     * network participant is reachable.  Do not serialize the entire
+     * topology in this periodic path merely to detect that fact: the JSON
+     * export requires a topology-sized transient allocation and can exhaust
+     * the embedded allocator as the discovered bay grows. */
+    g_telemetry_discovery_seen = 1U;
+  }
 #endif
 }
 
@@ -501,13 +509,6 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len)
 static void telemetry_update_network_health(SedsRouter *router)
 {
   uint64_t network_time_ms = 0ULL;
-  const int32_t topology_len = seds_router_export_topology_len(router);
-
-  if (g_telemetry_discovery_baseline_len > 0 &&
-      topology_len > g_telemetry_discovery_baseline_len)
-  {
-    g_telemetry_discovery_seen = 1U;
-  }
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK)
   {
     g_telemetry_timesync_valid = 1U;
@@ -687,7 +688,6 @@ SedsResult init_telemetry_router(void)
     return result;
   }
 
-  g_telemetry_discovery_baseline_len = seds_router_export_topology_len(r);
   /* Discovery begins from the normal poll loop after every node has had a
    * chance to initialize its CAN controller. */
 
