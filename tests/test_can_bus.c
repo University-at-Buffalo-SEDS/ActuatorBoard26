@@ -14,6 +14,12 @@ static uint32_t tick_ms;
 static uint8_t received[2048];
 static size_t received_len;
 static size_t callback_count;
+static uint32_t mock_bus_off;
+static uint32_t stop_count;
+static uint32_t start_count;
+static uint32_t abort_count;
+static uint32_t fifo_full_reads_remaining;
+static uint32_t fifo_level_reads;
 
 static size_t dlc_len(uint32_t dlc)
 {
@@ -22,8 +28,26 @@ static size_t dlc_len(uint32_t dlc)
     return lengths[dlc & 0xFU];
 }
 
-HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *h) { (void)h; return HAL_OK; }
-HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef *h) { (void)h; return HAL_OK; }
+HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *h)
+{ (void)h; stop_count++; return HAL_OK; }
+HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef *h)
+{ (void)h; start_count++; mock_bus_off = 0U; return HAL_OK; }
+HAL_StatusTypeDef HAL_FDCAN_GetProtocolStatus(const FDCAN_HandleTypeDef *h,
+                                              FDCAN_ProtocolStatusTypeDef *status)
+{ (void)h; status->BusOff = mock_bus_off; return HAL_OK; }
+HAL_StatusTypeDef HAL_FDCAN_AbortTxRequest(FDCAN_HandleTypeDef *h, uint32_t buffers)
+{ (void)h; assert(buffers == 0x7U); abort_count++; return HAL_OK; }
+uint32_t HAL_FDCAN_GetTxFifoFreeLevel(const FDCAN_HandleTypeDef *h)
+{
+    (void)h;
+    fifo_level_reads++;
+    tick_ms++;
+    if (fifo_full_reads_remaining > 0U) {
+        fifo_full_reads_remaining--;
+        return 0U;
+    }
+    return 3U;
+}
 HAL_StatusTypeDef HAL_FDCAN_ConfigGlobalFilter(FDCAN_HandleTypeDef *h, uint32_t a,
                                                 uint32_t b, uint32_t c, uint32_t d)
 {
@@ -69,6 +93,22 @@ int main(void)
     assert(can_bus_subscribe_rx(receive, NULL) == HAL_ERROR);
 
     const uint8_t raw[] = {1U, 2U, 3U};
+
+    /* A board started on an absent bus must recover when a later send occurs. */
+    mock_bus_off = 1U;
+    const uint32_t starts_before_recovery = start_count;
+    assert(can_bus_send_bytes(raw, sizeof(raw), 3U) == HAL_OK);
+    assert(stop_count == 2U);
+    assert(start_count == starts_before_recovery + 1U);
+    assert(abort_count == 1U);
+
+    /* A temporarily full three-slot FIFO must drain rather than dropping the
+     * next fragment of a larger SEDSNet packet. */
+    fifo_full_reads_remaining = 2U;
+    const uint32_t reads_before_wait = fifo_level_reads;
+    assert(can_bus_send_bytes(raw, sizeof(raw), 3U) == HAL_OK);
+    assert(fifo_level_reads >= reads_before_wait + 3U);
+
     can_bus_test_inject(3U, raw, sizeof(raw));
     can_bus_process_rx();
     assert(callback_count == 1U);

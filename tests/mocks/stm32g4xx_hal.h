@@ -3,11 +3,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { HAL_OK = 0, HAL_ERROR = 1 } HAL_StatusTypeDef;
+typedef enum { HAL_OK = 0, HAL_ERROR = 1, HAL_BUSY = 2, HAL_TIMEOUT = 3 } HAL_StatusTypeDef;
 typedef enum { GPIO_PIN_RESET = 0, GPIO_PIN_SET = 1 } GPIO_PinState;
 typedef struct { uint32_t output; uint32_t input; } GPIO_TypeDef;
 
 typedef struct { int unused; } FDCAN_HandleTypeDef;
+typedef struct { uint32_t BusOff; } FDCAN_ProtocolStatusTypeDef;
 typedef struct {
     uint32_t Identifier;
     uint32_t IdType;
@@ -49,6 +50,9 @@ typedef struct {
 #define FDCAN_FD_CAN 1U
 #define FDCAN_CLASSIC_CAN 0U
 #define FDCAN_NO_TX_EVENTS 0U
+#define FDCAN_TX_BUFFER0 0x1U
+#define FDCAN_TX_BUFFER1 0x2U
+#define FDCAN_TX_BUFFER2 0x4U
 #define FDCAN_ACCEPT_IN_RX_FIFO1 1U
 #define FDCAN_ACCEPT_IN_RX_FIFO0 0U
 #define FDCAN_REJECT_REMOTE 0U
@@ -63,6 +67,11 @@ HAL_StatusTypeDef HAL_FDCAN_ConfigGlobalFilter(FDCAN_HandleTypeDef *h, uint32_t 
 HAL_StatusTypeDef HAL_FDCAN_ActivateNotification(FDCAN_HandleTypeDef *h, uint32_t flags,
                                                  uint32_t buffers);
 HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef *h);
+HAL_StatusTypeDef HAL_FDCAN_GetProtocolStatus(const FDCAN_HandleTypeDef *h,
+                                              FDCAN_ProtocolStatusTypeDef *status);
+HAL_StatusTypeDef HAL_FDCAN_AbortTxRequest(FDCAN_HandleTypeDef *h,
+                                           uint32_t buffers);
+uint32_t HAL_FDCAN_GetTxFifoFreeLevel(const FDCAN_HandleTypeDef *h);
 HAL_StatusTypeDef HAL_FDCAN_AddMessageToTxFifoQ(FDCAN_HandleTypeDef *h,
                                                 FDCAN_TxHeaderTypeDef *header,
                                                 uint8_t *data);
