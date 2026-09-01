@@ -48,7 +48,7 @@ endif()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG 5e5c9d52f91e53b0113aaee7355bc354118538a6
+    GIT_TAG ca4fc6e7722683e11f3a377a0d1bc82c2de6ee14
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
