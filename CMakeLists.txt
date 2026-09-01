@@ -30,6 +30,10 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
+option(SEDS_FIRMWARE_SIM_TEST "Enable simulator-only network observability" OFF)
+if(SEDS_FIRMWARE_SIM_TEST)
+    add_compile_definitions(SEDS_FIRMWARE_SIM_TEST=1)
+endif()
 
 include(FetchContent)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -167,6 +171,8 @@ add_custom_command(
     OUTPUT "${sedsnet_SOURCE_DIR}/telemetry_config.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${SEDSNET_SCHEMA_FILE}" "${sedsnet_SOURCE_DIR}/telemetry_config.json"
+    COMMAND ${CMAKE_COMMAND} -E touch "${sedsnet_SOURCE_DIR}/build.rs"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${SEDSNET_STATIC_LIB_RELEASE}"
     DEPENDS "${SEDSNET_SCHEMA_FILE}"
     VERBATIM
 )
