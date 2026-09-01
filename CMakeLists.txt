@@ -167,19 +167,11 @@ FetchContent_Declare(
                   -P ${CMAKE_SOURCE_DIR}/cmake/prepare_sedsnet.cmake
 )
 FetchContent_MakeAvailable(sedsnet)
-add_custom_command(
-    OUTPUT "${sedsnet_SOURCE_DIR}/telemetry_config.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${SEDSNET_SCHEMA_FILE}" "${sedsnet_SOURCE_DIR}/telemetry_config.json"
-    COMMAND ${CMAKE_COMMAND} -E touch "${sedsnet_SOURCE_DIR}/build.rs"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${SEDSNET_STATIC_LIB_RELEASE}"
-    DEPENDS "${SEDSNET_SCHEMA_FILE}"
-    VERBATIM
-)
-add_custom_target(actuator_sedsnet_schema
-    DEPENDS "${sedsnet_SOURCE_DIR}/telemetry_config.json")
-add_dependencies(sedsnet_build actuator_sedsnet_schema)
+configure_file("${SEDSNET_SCHEMA_FILE}"
+               "${sedsnet_SOURCE_DIR}/telemetry_config.json" COPYONLY)
+file(TOUCH "${sedsnet_SOURCE_DIR}/build.rs")
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsnet::sedsnet)
+add_dependencies(${CMAKE_PROJECT_NAME} sedsnet_build)
 set(TELEMETRY_TIMESYNC_MASTER_PRIO "-1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
 
 # LaunchCore bootloader. The board port is kept in this repository while the
