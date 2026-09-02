@@ -72,9 +72,9 @@ class FirmwareContracts(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertFalse((ROOT / ".gitmodules").exists())
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
-        self.assertIn("3ea4f58978fc10c0bfefef6494dcde9e27c9d0a4", cmake)
+        self.assertIn("02278753e8dcaa7fb38feb7e07c7bbdd314238ce", cmake)
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
-        self.assertIn("ca4fc6e7722683e11f3a377a0d1bc82c2de6ee14", cmake)
+        self.assertIn("7cdbca87b7fad2c72d73257f4fb1b14df6b280a0", cmake)
 
     def test_telemetry_callback_never_waits_forever_on_full_command_queue(self):
         telemetry = (ROOT / "Core/Src/telemetry.c").read_text()

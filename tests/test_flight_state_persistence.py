@@ -6,6 +6,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FlightStatePersistenceContract(unittest.TestCase):
+    def test_persistent_records_match_flash_write_alignment(self):
+        storage = (ROOT / "Bootloader/storage_internal_flash.c").read_text()
+        self.assertIn(".persistent_data_write_size = 8u", storage)
+
     def test_flight_state_cache_is_wired_before_network_start(self):
         source = (ROOT / "Core/Src/flight_state_cache.c").read_text()
         main = (ROOT / "Core/Src/main.c").read_text()

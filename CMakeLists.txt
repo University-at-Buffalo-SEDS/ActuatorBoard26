@@ -48,7 +48,7 @@ endif()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG ca4fc6e7722683e11f3a377a0d1bc82c2de6ee14
+    GIT_TAG 7cdbca87b7fad2c72d73257f4fb1b14df6b280a0
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -165,7 +165,7 @@ set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
 FetchContent_Declare(
     sedsnet
     GIT_REPOSITORY https://github.com/Rylan-Meilutis/SEDSnet.git
-    GIT_TAG 3ea4f58978fc10c0bfefef6494dcde9e27c9d0a4
+    GIT_TAG 02278753e8dcaa7fb38feb7e07c7bbdd314238ce
     GIT_SHALLOW FALSE
     PATCH_COMMAND ${CMAKE_COMMAND}
                   -DSEDSNET_SOURCE_DIR=<SOURCE_DIR>
