@@ -27,6 +27,7 @@
     "virtual_time_ms": 250,
     "sample_count": 5,
     "memory_probe_warmup_samples": 3,
+    "require_stack_probe": true,
     "memory_probes": [
       {"name": "network_ready", "symbol": "g_telemetry_network_ready"},
       {"name": "peer_mask", "symbol": "g_telemetry_peer_mask"},
@@ -41,6 +42,7 @@
       {"name": "timesync_poll_errors", "symbol": "g_telemetry_timesync_poll_errors"},
       {"name": "telemetry_init_error", "symbol": "g_telemetry_init_error_code", "maximum": 0},
       {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 1024, "max_end_drop": 2048},
+      {"name": "telemetry_stack_remaining", "symbol": "g_telemetry_stack_remaining", "minimum": 2048},
       {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 1024},
       {"name": "pool_fragments", "symbol": "g_telemetry_pool_fragments"},
       {"name": "allocations", "symbol": "g_telemetry_alloc_count"},

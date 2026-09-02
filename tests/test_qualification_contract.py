@@ -43,8 +43,12 @@ class QualificationContractTests(unittest.TestCase):
         self.assertEqual(probes["network_ready"], "g_telemetry_network_ready")
         self.assertEqual(probes["discovery_seen"], "g_telemetry_discovery_seen")
         self.assertEqual(probes["timesync_valid"], "g_telemetry_timesync_valid")
+        self.assertEqual(probes["telemetry_stack_remaining"],
+                         "g_telemetry_stack_remaining")
 
         telemetry = (root / "Core" / "Src" / "telemetry.c").read_text(encoding="utf-8")
+        telemetry_thread = (root / "Core" / "Src" / "telemetry_thread.c").read_text(encoding="utf-8")
+        self.assertIn("g_telemetry_stack_remaining", telemetry_thread)
         for symbol in (
             "g_telemetry_network_ready",
             "g_telemetry_discovery_seen",
