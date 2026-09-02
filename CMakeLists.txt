@@ -96,6 +96,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/main_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/safety_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ota_stream.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/persistent_store.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/spark_stuff/igniter_driver.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/sol_stuff/solenoid_driver.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/stepper_stuff/stepper_driver.c
@@ -104,6 +106,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 set(LAUNCHCORE_APP_RUNTIME_SOURCES
     "${sedslaunchcore_SOURCE_DIR}/bootloader/src/crc32.c"
     "${sedslaunchcore_SOURCE_DIR}/bootloader/src/metadata.c"
+    "${sedslaunchcore_SOURCE_DIR}/bootloader/src/persist.c"
     "${sedslaunchcore_SOURCE_DIR}/update_lib/src/delta_update.c"
     "${sedslaunchcore_SOURCE_DIR}/update_lib/src/confirm_boot.c"
     "${sedslaunchcore_SOURCE_DIR}/update_lib/src/update_status.c"

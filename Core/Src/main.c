@@ -25,6 +25,7 @@
 #include "ux_api.h"
 #include "ux_device_class_cdc_acm.h"
 #include "stepper_driver.h"
+#include "flight_state_cache.h"
 #include <stdint.h>
 #include <stdio.h>
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
@@ -121,6 +122,7 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  flight_state_cache_restore();
   MX_ThreadX_Init();
 
   /* We should never get here as control is now taken by the scheduler */

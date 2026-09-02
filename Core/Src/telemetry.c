@@ -1,5 +1,6 @@
 // telemetry.c
 #include "telemetry.h"
+#include "flight_state_cache.h"
 #include "sim_network_probe.h"
 #include "ota_stream.h"
 
@@ -301,6 +302,11 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   return SEDS_OK;
 }
 
+SedsResult flight_state_cache_apply_network_update(const SedsPacketView *packet)
+{
+  return Flight_State_handler(packet, NULL);
+}
+
 SedsResult Heartbeat_handler(const SedsPacketView *pkt, void *user)
 {
   (void)sim_probe_heartbeat_handler(pkt, user);
@@ -582,6 +588,7 @@ SedsResult telemetry_poll_discovery(void)
   }
 
   bool did_queue = false;
+  (void)flight_state_cache_poll(g_router.r);
   const SedsResult result = seds_router_poll_discovery(g_router.r, &did_queue);
   if (result == SEDS_OK) {
     sim_probe_emit_heartbeat(g_router.r, telemetry_now_ms());
@@ -714,6 +721,8 @@ SedsResult init_telemetry_router(void)
 
   g_telemetry_init_error_code = TELEMETRY_INIT_OK;
   g_router.r = r;
+  result = flight_state_cache_init(r);
+  (void)result;
   g_router.created = 1U;
   g_router.start_time = tx_raw_now_ms_locked();
   return SEDS_OK;

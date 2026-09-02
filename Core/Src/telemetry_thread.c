@@ -8,6 +8,7 @@
 #include "ota_stream.h"
 TX_THREAD telemetry_thread;
 #define TELEMETRY_THREAD_STACK_SIZE (16U * 1024U)
+#define TELEMETRY_QUEUE_SERVICE_BUDGET_MS 1U
 
 volatile uint32_t g_telemetry_stack_remaining = TELEMETRY_THREAD_STACK_SIZE;
 
@@ -65,6 +66,7 @@ static void telemetry_disabled_command_cycle(void)
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
+    sample_telemetry_stack();
     can_bus_init(&hfdcan2);
 
 #ifndef TELEMETRY_TESTING
@@ -77,11 +79,10 @@ void telemetry_thread_entry(ULONG initial_input)
     {
 
         can_bus_process_rx();
-        (void)process_rx_queue_timeout(0);
         (void)telemetry_poll_discovery();
         (void)telemetry_poll_timesync();
         ota_stream_poll();
-        (void)dispatch_tx_queue_timeout(50);
+        (void)process_all_queues_timeout(TELEMETRY_QUEUE_SERVICE_BUDGET_MS);
         sample_telemetry_stack();
         tx_thread_sleep(1);
     }
