@@ -66,6 +66,8 @@ launchcore_generate_linker_scripts(
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+    USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -T "${LAUNCHCORE_APPLICATION_LINKER}"
 )
@@ -75,6 +77,8 @@ target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Os)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
+target_compile_definitions(STM32_Drivers PRIVATE
+    USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -142,11 +146,11 @@ set(SEDSNET_SCHEMA_FILE "${CMAKE_SOURCE_DIR}/config/sedsnet.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SEDSNET_SCHEMA_FILE}")
 set(SEDSNET_DEVICE_IDENTIFIER "AB" CACHE STRING "" FORCE)
 set(SEDSNET_MAX_STACK_PAYLOAD "128" CACHE STRING "" FORCE)
-set(SEDSNET_MAX_QUEUE_BUDGET "12288" CACHE STRING
+set(SEDSNET_MAX_QUEUE_BUDGET "8192" CACHE STRING
     "Bounded reliable/discovery history shared with the network peer" FORCE)
 set(SEDSNET_MAX_RECENT_RX_IDS "16" CACHE STRING "" FORCE)
-set(SEDSNET_ENV_STARTING_QUEUE_SIZE "1024" CACHE STRING "" FORCE)
-set(SEDSNET_ENV_QUEUE_GROW_STEP "1.25" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_STARTING_QUEUE_SIZE "512" CACHE STRING "" FORCE)
+set(SEDSNET_ENV_QUEUE_GROW_STEP "1.0" CACHE STRING "" FORCE)
 set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_FORCE_RELEASE ON CACHE BOOL
     "Build SEDSNet in release mode even for Debug firmware builds" FORCE)
