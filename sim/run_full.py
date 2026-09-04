@@ -107,6 +107,12 @@ def resolve_simulator_image(ui, docker: str, repo_root: Path, _architecture: str
         _build_simulator_image(ui, docker, source, local)
         return local
 
+    # An explicitly selected local development image should be used as-is.
+    # Mutable published tags (the default `latest`) are still pulled below so
+    # normal board tests automatically pick up simulator releases.
+    if "SEDS_FIRMWARE_SIM_IMAGE" in os.environ and _image_exists(docker, requested):
+        return requested
+
     ui.say("run", f"{docker} pull {requested}")
     # Always refresh mutable tags such as latest. Inherit terminal streams so
     # layer downloads and extraction remain visible instead of looking hung.
@@ -334,7 +340,7 @@ def run_network_simulation(
         # The Pico-Fi/radio path deliberately models constrained serial links.
         # Leave enough virtual time for the open command and its status ACK to
         # traverse both directions across the constrained serial links.
-        "virtual_time_ms": 18000,
+        "virtual_time_ms": 8000,
         "sample_count": 4,
         "enforce_end_drop": False,
         "nodes": [
@@ -348,7 +354,9 @@ def run_network_simulation(
                 "cwd": "/opt/groundstation/backend",
                 "env": {
                     "GS_DEBUG_PRINTS": "0",
+                    "GS_RADIO_DIAGNOSTICS": "1",
                     "RUST_LOG": "info",
+                    "GS_SIMULATED_SERIAL_PTY": "1",
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
@@ -356,7 +364,11 @@ def run_network_simulation(
                 },
                 "serial_links": [
                     {"link": "rocket_radio", "env": "GS_AV_BAY_SERIAL_PORT"},
-                    {"link": "fill_pico", "env": "GS_FILL_SERIAL_PORT"}
+                    {
+                        "link": "fill_pico",
+                        "env": "GS_SIMULATED_I2C_SOCKET",
+                        "transport": "pico_fi_i2c_to_uart"
+                    }
                 ]
             }
         ],
