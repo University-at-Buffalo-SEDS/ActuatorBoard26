@@ -229,6 +229,11 @@ def _test_failure_help(stage: str) -> str:
             "Inspect the memory-probe table for pool loss, low-water, allocation failures, "
             "or stack errors. A falling reserve usually indicates a missing free or queue drain."
         )
+    if stage == "Disconnected CAN survival":
+        return (
+            "Inspect CAN TX-failure and stack probes. A board must remain alive when no peer "
+            "acknowledges its transmissions; repeated transport errors must remain bounded."
+        )
     if stage == "Network discovery and time sync":
         return (
             "Check that this board and its configured peer use the configured FDCAN peripheral, "
@@ -917,6 +922,7 @@ def main() -> None:
                 run_full_simulation,
                 run_memory_profile,
                 run_network_simulation,
+                run_unacknowledged_can_simulation,
             )
             _run_test_stage(ui, results, "Docker readiness", require_docker)
             _run_test_stage(
@@ -940,6 +946,12 @@ def main() -> None:
             _run_test_stage(
                 ui, results, "Allocator stress and memory probes",
                 lambda: run_memory_profile(
+                    ui, cfg.repo_root, "stm32g4", cfg.build_subdir
+                ),
+            )
+            _run_test_stage(
+                ui, results, "Disconnected CAN survival",
+                lambda: run_unacknowledged_can_simulation(
                     ui, cfg.repo_root, "stm32g4", cfg.build_subdir
                 ),
             )
