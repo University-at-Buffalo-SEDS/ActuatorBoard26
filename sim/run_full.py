@@ -247,7 +247,7 @@ def run_unacknowledged_can_simulation(
             "--layout", "/simulation/board.json",
             "--firmware-root", "/firmware",
             "--can-unacknowledged",
-            "--virtual-time-ms", "5000",
+            "--virtual-time-ms", "1000",
             "--sample-count", "20",
             "--traffic-iterations", "100000",
         ]
