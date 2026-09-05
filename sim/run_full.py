@@ -383,9 +383,16 @@ def run_network_simulation(
         # The Pico-Fi/radio path deliberately models constrained serial links.
         # Leave enough virtual time for the open command and its status ACK to
         # traverse both directions across the constrained serial links.
-        "virtual_time_ms": 8000,
-        "sample_count": 4,
+        "virtual_time_ms": 10000,
+        "sample_count": 5,
         "enforce_end_drop": False,
+        # Reboot the FC after GroundStation has published and the FC has
+        # persisted underglow=1. Renode retains physical flash across this
+        # reset, matching a real power cycle while all network peers stay up.
+        "reboots": [
+            {"node": "flight", "after_sample": 2},
+            {"node": "power", "after_sample": 2},
+        ],
         "nodes": [
             {"name": node, "layout": f"/simulation/{node}.json", "firmware_root": f"/nodes/{node}"}
             for node, *_ in boards
@@ -403,6 +410,8 @@ def run_network_simulation(
                     "GS_LAYOUT_PATH": "/opt/groundstation/backend/layout/layout_hitl.json",
                     "GS_AV_BAY_UNDERGLOW_DEFAULT": "1",
                     "GS_FLIGHT_STATE_DEFAULT": "1",
+                    "GS_SIM_UNDERGLOW_SEQUENCE": "1,0,1",
+                    "GS_SIM_FLIGHT_BUZZER_SEQUENCE": "1,0,1",
                     "GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1",
                     "GS_HEARTBEAT_INTERVAL_MS": "7000",
                     "GS_SIM_DISABLE_PERIODIC_DISCOVERY": "1",
@@ -453,9 +462,25 @@ def run_network_simulation(
             {"name": "rf applied GroundStation underglow variable", "node": "rf", "probe": "underglow_updates", "minimum": 1},
             {"name": "power applied GroundStation underglow variable", "node": "power", "probe": "underglow_updates", "minimum": 1},
             {"name": "flight applied GroundStation underglow variable", "node": "flight", "probe": "underglow_updates", "minimum": 1},
+            {"name": "rf persisted the 1-0-1 underglow sequence", "node": "rf", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "power persisted the 1-0-1 underglow sequence", "node": "power", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "flight persisted the 1-0-1 underglow sequence", "node": "flight", "probe": "underglow_persist_writes", "minimum": 3},
+            {"name": "rf persistence remained healthy", "node": "rf", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "power persistence remained healthy", "node": "power", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "flight persistence remained healthy", "node": "flight", "probe": "underglow_persist_errors", "maximum": 0},
+            {"name": "flight applied GroundStation buzzer variable", "node": "flight", "probe": "flight_buzzer_updates", "minimum": 3},
+            {"name": "flight persisted the 1-0-1 buzzer sequence", "node": "flight", "probe": "flight_buzzer_persist_writes", "minimum": 3},
+            {"name": "flight buzzer persistence remained healthy", "node": "flight", "probe": "flight_buzzer_persist_errors", "maximum": 0},
+            {"name": "flight buzzer finished enabled", "node": "flight", "probe": "flight_buzzer_enabled", "minimum": 1},
             {"name": "rf underglow is enabled", "node": "rf", "probe": "underglow_enabled", "minimum": 1},
             {"name": "power underglow is enabled", "node": "power", "probe": "underglow_enabled", "minimum": 1},
             {"name": "flight underglow is enabled", "node": "flight", "probe": "underglow_enabled", "minimum": 1},
+            {"name": "flight restored underglow from retained flash after reboot", "node": "flight", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "flight restored enabled underglow before network resync", "node": "flight", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
+            {"name": "power restored underglow from retained flash after reboot", "node": "power", "probe": "underglow_boot_restore_valid", "minimum": 1},
+            {"name": "power restored enabled underglow before network resync", "node": "power", "probe": "underglow_boot_restored_value", "minimum": 1, "maximum": 1},
+            {"name": "flight rejoined the network after reboot", "node": "flight", "probe": "network_ready", "minimum": 1, "sample": 4},
+            {"name": "power rejoined the network after reboot", "node": "power", "probe": "network_ready", "minimum": 1, "sample": 4},
             *[
                 {"name": f"{node} received GroundStation flight state", "node": node,
                  "probe": "flight_state_updates", "minimum": 1}
