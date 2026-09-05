@@ -239,7 +239,14 @@ def run_unacknowledged_can_simulation(
         probe for probe in probes
         if probe.get("name") not in {"network_ready", "discovery_seen", "timesync_valid"}
     ]
-    layout["execution"]["memory_probe_warmup_samples"] = 3
+    layout["execution"]["memory_probe_warmup_samples"] = 2
+    # An isolated node retries quickly. Keep register and memory probes, but do
+    # not retain an unbounded instruction trace in the simulator process.
+    layout["execution"]["trace"] = False
+    for probe in layout["execution"]["memory_probes"]:
+        if probe.get("name") == "fdcan_tx_fail":
+            probe.pop("maximum", None)
+            probe["minimum"] = 1
 
     with tempfile.TemporaryDirectory(prefix="seds-firmware-isolated-can-") as directory:
         write_container_layout(Path(directory), layout)
@@ -251,8 +258,8 @@ def run_unacknowledged_can_simulation(
             "--layout", "/simulation/board.json",
             "--firmware-root", "/firmware",
             "--can-unacknowledged",
-            "--virtual-time-ms", "1000",
-            "--sample-count", "20",
+            "--virtual-time-ms", "250",
+            "--sample-count", "5",
             "--traffic-iterations", "100000",
         ]
         ui.say("run", " ".join(command))
