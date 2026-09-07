@@ -23,7 +23,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn('"fill_pico"', runner)
         self.assertIn('"GS_SIM_VALIDATE_VALVE_ROUNDTRIP": "1"', runner)
         self.assertIn('"probe": "valve_commands_received", "minimum": 1', runner)
-        self.assertIn("forwarded status ACK to GroundStation", runner)
+        self.assertIn("Valve acknowledgement completed the routed return path", runner)
         self.assertIn('"GroundStation discovered every board by autonomous name"', runner)
         self.assertIn('"transport_path": ["Gateway", "Actuator", "Valve", "DAQ"]', runner)
         self.assertIn('simulation_env["SEDS_FIRMWARE_SIM_TEST"] = "1"', runner)
