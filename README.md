@@ -97,3 +97,16 @@ cross-compiled firmware build additionally enforces application and bootloader
 flash/RAM limits at link time. `--all` also builds the factory and OTA images,
 runs the containerized board and memory simulations, and exercises linked
 SEDSNet discovery, synchronization, and command/acknowledgement traffic.
+
+
+## Regenerating with STM32CubeMX
+
+Open the checked-in `.ioc` file and generate with the CMake toolchain. Keep user
+code enabled. The `.ioc` is the source of truth for the ThreadX and USBX pool
+sizes; unit tests compare those values with the generated Azure RTOS headers so
+regeneration cannot silently shrink, grow, or repartition the pools.
+
+The top-level CMake project is board-owned and reconnects generated STM32
+sources with SEDSNet, LaunchCore, its generated linker scripts, persistence, and
+the simulator probes. After generation, run
+`python3 build.py test --full --release` before flashing or committing.
