@@ -75,7 +75,7 @@ def upload(port, image: bytes) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("device", help="UART device connected to PC10/PC11")
-    parser.add_argument("image", type=Path, help="packaged *.launchcore.bin image")
+    parser.add_argument("image", type=Path, help="packaged *.launchcore.img image")
     parser.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args()
     try:

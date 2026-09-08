@@ -37,14 +37,18 @@ This capacity-constrained board deliberately has no live full-image staging
 slot. Normal OTA uses a reversible LaunchCore delta in the 24 KiB region at
 `0x08078000`; complete images are accepted only by bootloader recovery.
 
-Generate a delta against the packaged image currently installed on the board:
+Build an OTA package using the automatically retained previous packaged image
+as the delta baseline:
 
 ```sh
-cmake -S . -B build/Release_Script \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DLAUNCHCORE_DELTA_BASE_IMAGE=/path/to/installed.launchcore.img
-cmake --build build/Release_Script --target delta-image
+python3 build.py build --release --ota
 ```
+
+The resulting `ActuationBoard.seds` contains a delta when a suitable baseline
+exists and the delta fits. If this is the first packaged build, or a delta is
+not viable, the package uses LaunchCore full-image recovery instead. Use
+`--ota-base /path/to/installed.launchcore.img` only to override the automatic
+baseline.
 
 The application listens on SEDSNet's P2P stream port `4510`. Messages are
 little-endian: begin is `01 <patch-size:u32>`, each chunk is
@@ -74,9 +78,10 @@ The board-owned SEDSNet v4 runtime schema is
 embedded crate before Cargo builds. Stable C IDs live in
 [`Core/Inc/sedsnet_config.h`](Core/Inc/sedsnet_config.h).
 
-The STM32G491 flash limit requires SEDSNet's optional compression and
-cryptography features to remain disabled for this build. CAN-FD packets remain
-wire-compatible as uncompressed packets.
+The STM32G491 flash limit requires SEDSNet's optional cryptography provider to
+remain disabled for this build. Payload compression is enabled: payloads at
+least 30 bytes long are compressed when doing so reduces their wire size, and
+the encoded packets remain compatible with other SEDSNet v4 endpoints.
 
 ## Tests
 
