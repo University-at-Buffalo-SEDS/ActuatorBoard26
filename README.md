@@ -1,7 +1,7 @@
 # ActuatorBoard26 firmware
 
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches pinned upstream revisions of both dependencies during
+image. CMake fetches the stable SEDSNet v4.0.18 and LaunchCore v1.0.0 releases during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from
@@ -19,7 +19,7 @@ The build produces:
 
 - `ActuationBoardBootloader.bin`: the 16 KiB LaunchCore bootloader region.
 - `ActuationBoard.launchcore.img`: the packaged application for Slot A at
-  `0x08004000` (vector table at `0x08004100`).
+  `0x08004000` (vector table at `0x08004200`).
 - `ActuationBoard.factory.bin`: bootloader, confirmed application, and initial
   metadata in one image for a blank board.
 
@@ -46,7 +46,7 @@ cmake -S . -B build/Release_Script \
 cmake --build build/Release_Script --target delta-image
 ```
 
-The application listens on SEDSNet v4.0.2 P2P stream port `4510`. Messages are
+The application listens on SEDSNet's P2P stream port `4510`. Messages are
 little-endian: begin is `01 <patch-size:u32>`, each chunk is
 `02 <offset:u32> <up-to-120-bytes>`, finish is `03`, abort is `04`, status is
 `05`, and enter-recovery is `06`. Every response is 13 bytes containing
@@ -82,10 +82,13 @@ wire-compatible as uncompressed packets.
 
 ```sh
 python3 build.py test
+python3 build.py test --all --release
 ```
 
 Host tests exercise CAN fragmentation/reassembly and overflow behavior,
 inter-thread queue saturation and shared state, output-driver safety behavior,
 schema/ID consistency, dependency pins, and the LaunchCore memory map. The
 cross-compiled firmware build additionally enforces application and bootloader
-flash/RAM limits at link time.
+flash/RAM limits at link time. `--all` also builds the factory and OTA images,
+runs the containerized board and memory simulations, and exercises linked
+SEDSNet discovery, synchronization, and command/acknowledgement traffic.
