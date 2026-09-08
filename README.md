@@ -1,7 +1,7 @@
 # ActuatorBoard26 firmware
 
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches the stable SEDSNet v4.0.18 and LaunchCore v1.0.0 releases during
+image. CMake fetches the stable SEDSNet v4.0.19 and LaunchCore v1.0.0 releases during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from
