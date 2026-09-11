@@ -349,6 +349,9 @@ static void MX_FDCAN2_Init(void)
   hfdcan2.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan2.Init.FrameFormat = FDCAN_FRAME_FD_NO_BRS;
   hfdcan2.Init.Mode = FDCAN_MODE_NORMAL;
+  /* FDCAN must retry arbitration and ACK failures for every physical
+   * fragment. SEDSNet adds end-to-end reliability; the non-blocking TX path
+   * and bus-off recovery keep a disconnected bus from blocking a thread. */
   hfdcan2.Init.AutoRetransmission = ENABLE;
   hfdcan2.Init.TransmitPause = DISABLE;
   hfdcan2.Init.ProtocolException = DISABLE;

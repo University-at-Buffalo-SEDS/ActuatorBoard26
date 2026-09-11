@@ -96,6 +96,8 @@ static bool is_replayed_igniter_sequence_command(const SedsPacketView *pkt, uint
 
 static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
 static UNUSED_FUNCTION int32_t g_can_side_id = -1;
+#define BOARD_CAN_MAX_FRAME_BYTES 128U
+#define BOARD_SIDE_TRANSPORT_TEMPLATES 4U
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 volatile int32_t g_telemetry_init_error_code = TELEMETRY_INIT_OK;
@@ -664,7 +666,7 @@ SedsResult init_telemetry_router(void)
           .user = NULL,
       }};
 
-  r = seds_router_new(Seds_RM_Relay, node_now_since_ms, NULL, locals,
+  r = seds_router_new(node_now_since_ms, NULL, locals,
                       sizeof(locals) / sizeof(locals[0]));
   if (!r)
   {
@@ -677,11 +679,21 @@ SedsResult init_telemetry_router(void)
     return SEDS_ERR;
   }
 
+  if (seds_router_set_preferred_discovery_master(r, "GS", 2U) != SEDS_OK)
+  {
+    printf("Error: failed to prefer GroundStation discovery master\r\n");
+    seds_router_free(r);
+    return SEDS_ERR;
+  }
+
   /* FDCAN already retries link-level transmission and this is a shared
    * broadcast medium.  Hop-level reliable framing on the whole CAN side can
    * create ACK/retry storms during simultaneous startup; discovery and time
    * sync are periodic, while OTA has its own chunk/update acknowledgements. */
-  g_can_side_id = seds_router_add_side_packed(r, "can", 3U, tx_send, NULL, false);
+  g_can_side_id = seds_router_add_side_packed_profile(
+      r, "can", 3U, tx_send, NULL, false,
+      SEDS_SIDE_TRANSPORT_PROFILE_IPV6_LIKE, BOARD_CAN_MAX_FRAME_BYTES, 0U,
+      BOARD_SIDE_TRANSPORT_TEMPLATES);
   if (g_can_side_id < 0)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_ADD_CAN_SIDE_FAILED;

@@ -115,7 +115,9 @@ int main(void)
     assert(received_len == sizeof(raw));
     assert(memcmp(received, raw, sizeof(raw)) == 0);
 
-    uint8_t large[600];
+    /* SEDSNet bounds physical side frames to 128 bytes. A logical side frame
+     * can exceed the three-entry FIFO and must stream without truncation. */
+    uint8_t large[128];
     for (size_t i = 0; i < sizeof(large); ++i) large[i] = (uint8_t)i;
     frame_count = 0U;
     assert(can_bus_send_large(large, sizeof(large), 3U) == HAL_OK);

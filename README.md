@@ -1,7 +1,7 @@
 # ActuatorBoard26 firmware
 
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches the stable SEDSNet v4.0.20 and LaunchCore v1.0.0 releases during
+image. CMake fetches the stable SEDSNet v4.0.27 and LaunchCore v1.0.0 releases during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from
@@ -88,7 +88,19 @@ the encoded packets remain compatible with other SEDSNet v4 endpoints.
 ```sh
 python3 build.py test
 python3 build.py test --all --release
+python3 build.py test --all --release --ultra-soak
 ```
+
+On Docker hosts that cannot create bridge interfaces (including the Jupiter
+validation host), prefix the command with
+`SEDS_FIRMWARE_SIM_DOCKER_NETWORK=host`. The linked test requires GroundStation
+to label all seven graph nodes, attribute real payload traffic to each board,
+and correlate a routed valve command with its returned state ACK.
+
+`--ultra-soak` keeps the normal 16-second full-network test first, then adds a
+separate 600,000 ms firmware-time fault/rejoin, command/ACK, and memory-leak
+qualification. Commands must execute and return an ACK throughout the soak,
+including its final interval.
 
 Host tests exercise CAN fragmentation/reassembly and overflow behavior,
 inter-thread queue saturation and shared state, output-driver safety behavior,

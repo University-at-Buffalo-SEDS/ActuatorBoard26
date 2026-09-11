@@ -84,14 +84,13 @@
   "peripherals": [
     {
       "type": "adc",
-      "name": "actuation_adc1_fault_injection",
+      "name": "actuation_adc1",
       "model": "stm32_adc",
       "bus": "adc1",
       "bits": 12,
       "channels": 3,
       "channel_samples": [1024, 2048, 3072],
-      "noise_lsb": 2,
-      "failure_every": 997
+      "noise_lsb": 2
     },
     {
       "type": "adc",
