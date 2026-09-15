@@ -1,7 +1,15 @@
 # ActuatorBoard26 firmware
 
+Valve confirmations (`UMBILICAL_STATUS`) request reliable ordered delivery. Deploy
+the matching schema on GroundStation and gateway/router firmware as well; older
+schemas used unordered delivery. Confirmation reports the actual driver state,
+including rejected open requests. Ordering does not guarantee a latency bound
+when packets are lost or a route is unavailable.
+SEDSNet 4.0.28 uses final-destination ACKs to gate ordered streams across
+shared CAN and Gateway; retries preserve order without hop-level CAN sequencing.
+
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches the stable SEDSNet v4.0.27 and LaunchCore v1.0.0 releases during
+image. CMake fetches the stable SEDSNet v4.0.28 and LaunchCore v1.0.0 releases during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from

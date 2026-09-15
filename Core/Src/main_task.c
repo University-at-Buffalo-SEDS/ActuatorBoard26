@@ -289,13 +289,15 @@ static void handle_command(thread_comm_msg_t cmd)
         if (solenoidOn(&n2_solenoid) == 0)
         {
             g_nitrogen_open = 1U;
-            (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
             publish_expected_outputs();
         }
         if (thread_comm_get_abort() != 0U)
         {
             main_task_force_outputs_safe_off();
         }
+        /* Respond with actual state even when the driver rejects opening.
+         * Otherwise GroundStation waits for the five-second periodic report. */
+        (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
         break;
 
     case CMD_NITROGEN_CLOSE:
@@ -309,13 +311,13 @@ static void handle_command(thread_comm_msg_t cmd)
         if (solenoidOn(&n20_solenoid) == 0)
         {
             g_nitrous_open = 1U;
-            (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
             publish_expected_outputs();
         }
         if (thread_comm_get_abort() != 0U)
         {
             main_task_force_outputs_safe_off();
         }
+        (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
         break;
 
     case CMD_NITROUS_CLOSE:
