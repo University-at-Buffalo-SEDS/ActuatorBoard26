@@ -8,7 +8,8 @@ submission does not itself prove remote delivery.
 
 This requires the SEDSNet v4.0.30 missing-route fix: a reliable application
 send with no discovered remote route must return an error, not silently succeed.
-The current board pins v4.0.31, which also includes bounded header-cache and
+The current board tracks SEDSNet `main`, including topology-baseline recovery from
+v4.0.32 and bounded header-cache and
 peer-restart recovery. The matching candidate passed the 16-second gate,
 120-second restart regression and 600-second seven-board soak on Jupiter.
 Hardware validation remains required.

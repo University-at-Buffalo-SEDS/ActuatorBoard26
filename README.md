@@ -9,7 +9,7 @@ SEDSNet 4.0.31 uses final-destination ACKs to gate ordered streams across
 shared CAN and Gateway; retries preserve order without hop-level CAN sequencing.
 
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches the stable SEDSNet v4.0.31 and LaunchCore v1.0.0 releases during
+image. CMake fetches rolling SEDSNet `main` and the LaunchCore v1.0.0 release during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from

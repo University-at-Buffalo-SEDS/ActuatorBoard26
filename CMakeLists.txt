@@ -41,9 +41,8 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# Keep third-party sources out of the repository while pinning known-good
-# revisions for reproducible firmware builds. FetchContent remains connected so
-# a newly pinned revision is pulled automatically during configure.
+# Fetch LaunchCore's stable release and rolling SEDSNet main. Keep FetchContent
+# connected so configuring picks up newly validated networking fixes.
 
 FetchContent_Declare(
     sedslaunchcore
@@ -166,7 +165,7 @@ set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
 FetchContent_Declare(
     sedsnet
     GIT_REPOSITORY https://github.com/Rylan-Meilutis/SEDSnet.git
-    GIT_TAG v4.0.31
+    GIT_TAG main
     GIT_SHALLOW FALSE
     PATCH_COMMAND ${CMAKE_COMMAND}
                   -DSEDSNET_SOURCE_DIR=<SOURCE_DIR>
