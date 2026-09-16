@@ -3,6 +3,7 @@
 #include "thread_comm.h"
 #include "main.h"
 #include "telemetry.h"
+#include "status_report_retry.h"
 #include "igniter_driver.h"
 #include "solenoid_driver.h"
 #include "stepper_driver.h"
@@ -10,7 +11,22 @@
 #include <stdint.h>
 
 TX_THREAD main_task_thread;
-#define MAIN_TASK_STACK_SIZE (4U * 1024U)
+/* Immediate state publication executes the Rust router on this task stack. */
+#define MAIN_TASK_STACK_SIZE (12U * 1024U)
+volatile uint32_t g_main_task_stack_remaining = MAIN_TASK_STACK_SIZE;
+volatile uint32_t g_main_task_loop_count;
+
+static void sample_main_task_stack(void)
+{
+    const volatile uint32_t *start = main_task_thread.tx_thread_stack_start;
+    const volatile uint32_t *end = main_task_thread.tx_thread_stack_end;
+    if (start == NULL || end == NULL || start >= end) return;
+    const volatile uint32_t *p = start;
+    while (p < end && *p == 0xEFEFEFEFUL) ++p;
+    uint32_t remaining = (uint32_t)((uintptr_t)p - (uintptr_t)start);
+    if (remaining < g_main_task_stack_remaining)
+        g_main_task_stack_remaining = remaining;
+}
 #define UMBILICAL_STATUS_PERIOD_TICKS (5U * TX_TIMER_TICKS_PER_SECOND)
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
 #define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
@@ -24,6 +40,8 @@ TX_THREAD main_task_thread;
 #define PLUMBING_RETRACT_STEP_PERIOD_US 30U
 
 static uint8_t g_aborted = 0U;
+volatile uint32_t g_sim_last_valve_command = UINT32_MAX;
+volatile uint64_t g_sim_last_valve_command_ms = 0;
 static uint8_t g_igniter_on = 0U;
 static uint8_t g_nitrogen_open = 0U;
 static uint8_t g_nitrous_open = 0U;
@@ -43,10 +61,10 @@ stepper_t stepper = {STEPPER_CTRL_GPIO_Port, STEPPER_CTRL_Pin, STEPPER_DIR_GPIO_
 
 static void publish_all_umbilical_statuses(void)
 {
-    (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
-    (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
-    (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
-    (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+    (void)publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+    (void)publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+    (void)publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+    (void)publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
 }
 
 static void publish_expected_outputs(void)
@@ -79,7 +97,7 @@ static uint8_t igniter_on(void)
         g_igniter_on = 1U;
         if (was_on == 0U)
         {
-            (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+            (void)publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
             publish_expected_outputs();
         }
         return 1U;
@@ -92,7 +110,7 @@ static void igniter_off(void)
 {
     igniterOff(&igniter);
     g_igniter_on = 0U;
-    (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+    (void)publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
     publish_expected_outputs();
 }
 
@@ -126,7 +144,7 @@ static void start_plumbing_retract(void)
     }
 
     g_plumbing_retracted = 1U;
-    (void)telemetry_publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
+    (void)publish_umbilical_status(CMD_RETRACT_PLUMBING, g_plumbing_retracted);
 
     stepperSetDir(&stepper, STEP_CW);
     if (stepperWake(&stepper) != STEP_OK)
@@ -266,6 +284,9 @@ static void handle_command(thread_comm_msg_t cmd)
         return;
     }
 
+    g_sim_last_valve_command = (uint32_t)cmd.cmd;
+    g_sim_last_valve_command_ms = ((uint64_t)tx_time_get() * 1000ULL) /
+                                  TX_TIMER_TICKS_PER_SECOND;
     switch (cmd.cmd){
     case CMD_IGNITER_ON:
         g_launch_sequence_active = 0U;
@@ -297,13 +318,13 @@ static void handle_command(thread_comm_msg_t cmd)
         }
         /* Respond with actual state even when the driver rejects opening.
          * Otherwise GroundStation waits for the five-second periodic report. */
-        (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+        (void)publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
         break;
 
     case CMD_NITROGEN_CLOSE:
         solenoidOff(&n2_solenoid);
         g_nitrogen_open = 0U;
-        (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+        (void)publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
         publish_expected_outputs();
         break;
 
@@ -317,13 +338,13 @@ static void handle_command(thread_comm_msg_t cmd)
         {
             main_task_force_outputs_safe_off();
         }
-        (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+        (void)publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
         break;
 
     case CMD_NITROUS_CLOSE:
         solenoidOff(&n20_solenoid);
         g_nitrous_open = 0U;
-        (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+        (void)publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
         publish_expected_outputs();
         break;
 
@@ -356,15 +377,17 @@ void main_task_entry(ULONG initial_input)
 
     for (;;)
     {
+        sample_main_task_stack();
+        g_main_task_loop_count++;
         if (thread_comm_get_abort() != 0U)
         {
             main_task_force_outputs_safe_off();
 
             if (g_aborted == 0U)
             {
-                (void)telemetry_publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
-                (void)telemetry_publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
-                (void)telemetry_publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
+                (void)publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+                (void)publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+                (void)publish_umbilical_status(CMD_IGNITER_ON, g_igniter_on);
                 g_aborted = 1U;
             }
 
@@ -374,6 +397,7 @@ void main_task_entry(ULONG initial_input)
             }
 
             publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
+            retry_pending_status_reports();
             tx_thread_sleep(10);
             continue;
         }
@@ -386,6 +410,7 @@ void main_task_entry(ULONG initial_input)
         service_launch_sequence();
         service_plumbing_retract();
         publish_umbilical_statuses_if_due(&last_umbilical_status_ticks);
+        retry_pending_status_reports();
 
         tx_thread_sleep(1);
     }

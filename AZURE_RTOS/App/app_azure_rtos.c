@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "main.h"
+#include "board_memory_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

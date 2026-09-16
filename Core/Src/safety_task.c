@@ -2,6 +2,9 @@
 #include "main.h"
 #include "thread_comm.h"
 #include "tx_api.h"
+#include "safety_diagnostics.h"
+
+volatile safety_abort_diagnostic_t g_safety_first_abort;
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -249,6 +252,9 @@ static void safety_check_heartbeat(void)
         if ((now_ms - last_heartbeat_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS)
         {
             safety_heartbeat_timeout_count++;
+            safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
+                                      last_heartbeat_ms, thread_comm_get_flight_state(),
+                                      0U, thread_comm_get_abort());
             (void)thread_comm_set_abort(1U);
             main_task_force_outputs_safe_off();
         }
@@ -264,6 +270,9 @@ static void safety_check_heartbeat(void)
     if ((now_ms - safety_heartbeat_missing_since_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS)
     {
         safety_heartbeat_timeout_count++;
+        safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
+                                  last_heartbeat_ms, thread_comm_get_flight_state(),
+                                  0U, thread_comm_get_abort());
         (void)thread_comm_set_abort(1U);
         main_task_force_outputs_safe_off();
     }
@@ -312,6 +321,10 @@ void safety_task_entry(ULONG initial_input)
 
         if (safety_adc_start() != TX_SUCCESS)
         {
+            safety_record_first_abort(SAFETY_ABORT_ADC_START, safety_now_ms(),
+                                      thread_comm_get_groundstation_heartbeat_ms(),
+                                      thread_comm_get_flight_state(),
+                                      safety_adc_start_step, thread_comm_get_abort());
             (void)thread_comm_set_abort(1U);
             main_task_force_outputs_safe_off();
             tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);

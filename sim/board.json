@@ -44,6 +44,19 @@
       {"name": "telemetry_init_error", "symbol": "g_telemetry_init_error_code", "maximum": 0},
       {"name": "pool_available", "symbol": "g_telemetry_pool_available", "minimum": 1024, "max_end_drop": 2048},
       {"name": "telemetry_stack_remaining", "symbol": "g_telemetry_stack_remaining", "minimum": 2048},
+      {"name": "main_stack_remaining", "symbol": "g_main_task_stack_remaining", "minimum": 2048},
+      {"name": "main_loop_count", "symbol": "g_main_task_loop_count", "minimum": 1},
+      {"name": "safety_heartbeat_timeouts", "symbol": "safety_heartbeat_timeout_count", "maximum": 0},
+      {"name": "first_safety_abort_ms", "symbol": "g_safety_first_abort", "maximum": 0},
+      {"name": "status_report_pending", "symbol": "status_report_pending"},
+      {"name": "status_report_failures", "symbol": "status_report_failures"},
+      {"name": "status_report_recovered", "symbol": "status_report_recovered"},
+      {"name": "last_valve_command", "symbol": "g_sim_last_valve_command"},
+      {"name": "command_queue_drops", "symbol": "g_command_queue_drop_count", "maximum": 0},
+      {"name": "status_attempts", "symbol": "g_umbilical_status_attempts"},
+      {"name": "status_enqueue_failures", "symbol": "g_umbilical_status_enqueue_failures"},
+      {"name": "hardfault_pc", "symbol": "g_hardfault_pc", "maximum": 0},
+      {"name": "hardfault_cfsr", "symbol": "g_hardfault_cfsr", "maximum": 0},
       {"name": "pool_low_water", "symbol": "g_telemetry_pool_low_water", "minimum": 1024},
       {"name": "pool_fragments", "symbol": "g_telemetry_pool_fragments"},
       {"name": "allocations", "symbol": "g_telemetry_alloc_count"},
@@ -69,7 +82,12 @@
     "strict_mmio": false,
     "clocks": [],
     "connections": [],
-    "pins": [],
+    "pins": [
+      {"gpio": "gpio", "pin": 32, "initial": "high"},
+      {"gpio": "gpio", "pin": 33, "initial": "high"},
+      {"gpio": "gpio", "pin": 34, "initial": "high"},
+      {"gpio": "gpio", "pin": 35, "initial": "high"}
+    ],
     "dma_routes": []
   },
   "traffic": {

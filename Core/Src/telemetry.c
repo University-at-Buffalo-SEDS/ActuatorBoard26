@@ -123,6 +123,14 @@ volatile uint32_t g_sim_heartbeat_wire_tx = 0U;
 volatile uint32_t g_telemetry_rx_packets = 0U;
 volatile uint32_t g_telemetry_rx_errors = 0U;
 volatile uint32_t g_telemetry_timesync_poll_errors = 0U;
+/* Read-only ST-Link probes distinguish command execution, enqueue rejection,
+ * and queue service errors without adding traffic to a failing return path. */
+volatile uint32_t g_umbilical_status_attempts = 0U;
+volatile uint32_t g_umbilical_status_enqueue_failures = 0U;
+volatile uint32_t g_umbilical_status_last_payload = 0U;
+volatile int32_t g_umbilical_status_last_result = 0;
+volatile uint32_t g_telemetry_queue_service_errors = 0U;
+volatile int32_t g_telemetry_queue_service_last_result = 0;
 
 int32_t telemetry_get_init_error_code(void) { return g_telemetry_init_error_code; }
 
@@ -608,8 +616,16 @@ SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on)
   (void)payload;
   return SEDS_OK;
 #else
-  return log_telemetry_asynchronous(SEDS_DT_UMBILICAL_STATUS, payload, 2U,
-                                    sizeof(payload[0]));
+  g_umbilical_status_attempts++;
+  g_umbilical_status_last_payload = ((uint32_t)payload[0] << 8) | payload[1];
+  /* Application state is independent of the transport ACK. Submit it now,
+   * after the output action, rather than waiting behind periodic telemetry.
+   * SEDSNet still owns routing, ordering and protocol acknowledgements. */
+  const SedsResult result = log_telemetry_synchronous(
+      SEDS_DT_UMBILICAL_STATUS, payload, 2U, sizeof(payload[0]));
+  g_umbilical_status_last_result = (int32_t)result;
+  if (result != SEDS_OK) g_umbilical_status_enqueue_failures++;
+  return result;
 #endif
 }
 
@@ -886,7 +902,10 @@ SedsResult process_all_queues_timeout(uint32_t timeout_ms)
     return SEDS_ERR;
   }
 
-  return seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
+  const SedsResult result = seds_router_process_all_queues_with_timeout(g_router.r, timeout_ms);
+  g_telemetry_queue_service_last_result = (int32_t)result;
+  if (result != SEDS_OK) g_telemetry_queue_service_errors++;
+  return result;
 #endif
 }
 

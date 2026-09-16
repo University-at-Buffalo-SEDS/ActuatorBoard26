@@ -30,7 +30,7 @@ static void main_task_force_outputs_safe_off(void) {
     g_nitrogen_open=0; g_nitrous_open=0;
 }
 static void publish_expected_outputs(void) {}
-static int telemetry_publish_umbilical_status(int cmd, int on) {
+static int publish_umbilical_status(int cmd, int on) {
     count++; reported_command=cmd; reported_state=on; return 0;
 }
 static void command(int cmd) { switch (cmd) {
