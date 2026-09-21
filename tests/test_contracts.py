@@ -13,7 +13,11 @@ class FirmwareContracts(unittest.TestCase):
         header = (ROOT / "Core/Inc/sedsnet_config.h").read_text()
         aliases = {endpoint["rust"] for endpoint in schema["endpoints"]}
         self.assertEqual(len(aliases), len(schema["endpoints"]))
-        self.assertTrue(all(alias.startswith("Actuator") for alias in aliases))
+        self.assertEqual(schema["endpoints"][0]["rust"], "FillSdCard")
+        self.assertEqual(schema["endpoints"][0]["name"], "SD_CARD")
+        self.assertNotIn("ActuatorSdCard", aliases)
+        self.assertTrue(all(alias == "FillSdCard" or alias.startswith("Actuator")
+                            for alias in aliases))
         for data_type in schema["types"]:
             self.assertTrue(set(data_type["endpoints"]).issubset(aliases))
 
