@@ -76,7 +76,7 @@ class FirmwareContracts(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertFalse((ROOT / ".gitmodules").exists())
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
-        self.assertIn("GIT_TAG main", cmake)
+        self.assertIn("GIT_TAG 10a0400bf56e09bfc2965128e602f1fc5de2d559", cmake)
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
         self.assertIn("GIT_TAG v1.0.0", cmake)
 
