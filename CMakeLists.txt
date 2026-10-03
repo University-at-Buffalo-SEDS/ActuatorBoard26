@@ -317,3 +317,8 @@ if(ENABLE_TELEMETRY)
 else()
     # Not defined → disabled
 endif()
+
+# Board-owned progress watchdog; deliberately independent of SEDSnet.
+option(ENABLE_BOARD_WATCHDOG "Enable independent hardware watchdog with task progress gating" OFF)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_watchdog.c)
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$<BOOL:${ENABLE_BOARD_WATCHDOG}>)

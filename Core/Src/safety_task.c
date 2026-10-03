@@ -1,3 +1,4 @@
+#include "board_watchdog.h"
 #include "AB-Threads.h"
 #include "main.h"
 #include "thread_comm.h"
@@ -311,6 +312,7 @@ void safety_task_entry(ULONG initial_input)
 
     while (1)
     {
+        board_watchdog_progress(BOARD_WATCHDOG_SAFETY);
         safety_check_heartbeat();
 
         if (thread_comm_abort_allowed() == 0U)

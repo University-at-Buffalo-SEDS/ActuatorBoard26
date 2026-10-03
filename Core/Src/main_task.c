@@ -1,3 +1,4 @@
+#include "board_watchdog.h"
 #include "AB-Threads.h"
 #include "tx_api.h"
 #include "thread_comm.h"
@@ -377,6 +378,7 @@ void main_task_entry(ULONG initial_input)
 
     for (;;)
     {
+        board_watchdog_progress(BOARD_WATCHDOG_CONTROL);
         sample_main_task_stack();
         g_main_task_loop_count++;
         if (thread_comm_get_abort() != 0U)
