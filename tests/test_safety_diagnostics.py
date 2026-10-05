@@ -57,6 +57,16 @@ static int telemetry_broadcast_abort(const char *msg) { assert(msg[0]); return 0
             code += "static void main_task_force_outputs_safe_off(void) { calls++; }\n"
         code += functions + r"""
 int main(void) {
+    /* Ten minutes of regular heartbeats, including concurrent newer samples.
+     * This exercises the timeout logic, not a full-system traffic soak. */
+    for (uint64_t t = 1; t <= 600000; t += 10) {
+        now_ms=t;
+        heartbeat=(t % 30 == 1) ? t + 1 : t;
+        safety_check_heartbeat();
+        assert(!aborted && !g_safety_first_abort.reason);
+    }
+    heartbeat=101; now_ms=100;
+    safety_check_heartbeat(); assert(!aborted && !g_safety_first_abort.reason);
     heartbeat=100; now_ms=5099;
     safety_check_heartbeat(); assert(!aborted && !g_safety_first_abort.reason);
     now_ms=5100; safety_check_heartbeat();
@@ -97,4 +107,3 @@ int main(void) {
                             "-I", str(ROOT / "Core/Inc"), "-x", "c", "-", "-o", binary],
                            input=code, text=True, check=True)
             subprocess.run([binary], check=True)
-

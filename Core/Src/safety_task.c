@@ -238,8 +238,10 @@ static uint32_t safety_sample_mismatch_mask(const safety_adc_sample_t *sample)
 
 static void safety_check_heartbeat(void)
 {
-    const uint64_t now_ms = safety_now_ms();
     const uint64_t last_heartbeat_ms = thread_comm_get_groundstation_heartbeat_ms();
+    /* Snapshot reception before local uptime: a concurrently received
+     * heartbeat must not underflow the elapsed-time calculation. */
+    const uint64_t now_ms = safety_now_ms();
 
     if (thread_comm_abort_allowed() == 0U)
     {
@@ -250,7 +252,8 @@ static void safety_check_heartbeat(void)
     if (last_heartbeat_ms != 0ULL)
     {
         safety_heartbeat_missing_since_ms = 0ULL;
-        if ((now_ms - last_heartbeat_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS)
+        if ((now_ms >= last_heartbeat_ms) &&
+            ((now_ms - last_heartbeat_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS))
         {
             safety_heartbeat_timeout_count++;
             safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,

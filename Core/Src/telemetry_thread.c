@@ -3,6 +3,7 @@
 #include "AB-Threads.h"
 #include "tx_api.h"
 #include "telemetry.h"
+#include "safety_diagnostics.h"
 #include "can_bus.h"
 #include "thread_comm.h"
 #include "main.h"
@@ -64,6 +65,29 @@ static void telemetry_disabled_command_cycle(void)
 }
 #endif
 
+/* Network-thread reporting keeps allocation and transport out of safety checks.
+ * Retry queue rejection once per second; never rebroadcast a received abort. */
+static void telemetry_report_safety_abort(void)
+{
+    static uint8_t sent, attempted;
+    static ULONG last_attempt;
+    if (sent || g_safety_first_abort.reason == SAFETY_ABORT_NONE) return;
+    const ULONG now = tx_time_get();
+    if (attempted && (ULONG)(now - last_attempt) < TX_TIMER_TICKS_PER_SECOND) return;
+    attempted = 1U;
+    last_attempt = now;
+    const char *reason;
+    switch (g_safety_first_abort.reason) {
+    case SAFETY_ABORT_HEARTBEAT: reason = "Actuator safety abort: heartbeat timeout"; break;
+    case SAFETY_ABORT_INITIAL_HEARTBEAT: reason = "Actuator safety abort: initial heartbeat missing"; break;
+    case SAFETY_ABORT_CONTINUITY: reason = "Actuator safety abort: continuity lost"; break;
+    case SAFETY_ABORT_LAUNCH_CONTINUITY: reason = "Actuator safety abort: launch continuity timeout"; break;
+    case SAFETY_ABORT_ADC_START: reason = "Actuator safety abort: ADC start failed"; break;
+    default: reason = "Actuator safety abort"; break;
+    }
+    if (log_telemetry_string_asynchronous(SEDS_DT_ABORT, reason) == SEDS_OK) sent = 1U;
+}
+
 void telemetry_thread_entry(ULONG initial_input)
 {
     (void)initial_input;
@@ -85,6 +109,7 @@ void telemetry_thread_entry(ULONG initial_input)
         (void)telemetry_poll_timesync();
         ota_stream_poll();
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_SERVICE_BUDGET_MS);
+        telemetry_report_safety_abort();
         sample_telemetry_stack();
         tx_thread_sleep(1);
     }
