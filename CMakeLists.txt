@@ -65,6 +65,7 @@ launchcore_generate_linker_scripts(
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
+include(cmake/packet_store.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U
     FIRMWARE_USB_DEBUG_ENABLED=$<IF:$<CONFIG:Debug>,1,0>)
@@ -163,6 +164,10 @@ set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
     "Preserve the current unencrypted CAN deployment and reduce flash/RAM use" FORCE)
 
 include("${CMAKE_SOURCE_DIR}/cmake/sedsnet_source.cmake")
+
+if(SEDSNET_COMPACT_PACKET_STORE AND NOT EXISTS "${SEDSNET_DIR}/src/packet_store.rs")
+    message(FATAL_ERROR "Selected SEDSnet lacks the packet arena; fetch dev or supply a current dev checkout")
+endif()
 
 FetchContent_Declare(
     sedsnet
