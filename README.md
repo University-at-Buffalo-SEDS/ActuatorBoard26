@@ -152,12 +152,17 @@ override remains local and is never fetched or reset.
 python3 build.py build --release --packet-store compact
 ```
 
-This selects the latest SEDSnet `dev` commit and initializes a 4096-byte,
-32-handle arena before the router starts. It uses the existing allocator
+This selects the latest SEDSnet `dev` commit and initializes a 2048-byte,
+16-handle arena before the router starts. It uses the existing allocator
 pool and leaves ThreadX scheduling unchanged. Compression stays disabled.
 Use `--packet-store heap` to disable the arena, including in a previously enabled build cache.
 Startup fails cleanly if the reservation does not fit; router retries reuse
-the arena. This is an opt-in development build, not hardware qualification.
+the arena. With SEDSnet 4.1.3 or newer, a full optional arena retains an
+already-owned heap payload without copying it; queue limits still apply.
+The smaller reservation leaves more heap headroom for learned schemas and
+reliable status delivery. For network-pressure comparison tests, use
+`--allocator tlsf --packet-store heap`. This is an opt-in development build,
+not hardware qualification.
 
 `--allocator tlsf` selects the board-owned TLSF allocator for SEDSnet.
 ThreadX scheduling and thread stacks retain their existing ownership. The default is `threadx`.

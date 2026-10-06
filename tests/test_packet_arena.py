@@ -32,6 +32,9 @@ class PacketArenaTests(unittest.TestCase):
                 self.assertIn('-DSEDSNET_COMPACT_PACKET_COMPRESSION=OFF',commands[0])
 
     def test_arena_failure_retry_and_router_recreation(self):
+        config=(ROOT / "cmake/packet_store.cmake").read_text()
+        self.assertIn('set(BOARD_PACKET_ARENA_BYTES "2048"', config)
+        self.assertIn('set(BOARD_PACKET_ARENA_HANDLES "16"', config)
         stub=r'''#pragma once
 #include <stdint.h>
 typedef int SedsResult;
@@ -40,7 +43,7 @@ typedef int SedsResult;
 static unsigned calls;
 static int result;
 static int seds_packet_store_configure(unsigned bytes,unsigned handles,unsigned limit)
-{ calls++; if(bytes!=4096 || handles!=32 || limit!=512) return -1; return result; }
+{ calls++; if(bytes!=2048 || handles!=16 || limit!=512) return -1; return result; }
 '''
         body=r'''#include "board_packet_store.h"
 #include <assert.h>
@@ -61,7 +64,7 @@ int main(void) {
                 d=Path(directory)
                 (d/'sedsnet_config.h').write_text(stub)
                 (d/'board_packet_store.h').write_text((ROOT/'Core/Inc/board_packet_store.h').read_text())
-                cmd=['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DBOARD_PACKET_ARENA_BYTES=4096','-DBOARD_PACKET_ARENA_HANDLES=32','-I',str(d)]
+                cmd=['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DBOARD_PACKET_ARENA_BYTES=2048','-DBOARD_PACKET_ARENA_HANDLES=16','-I',str(d)]
                 if enabled: cmd+=['-DSEDS_ENABLE_COMPACT_PACKET_STORE=1']
                 subprocess.run(cmd+['-x','c','-','-o',str(d/'test')],input=body,text=True,check=True)
                 subprocess.run([str(d/'test')],check=True,timeout=5)
