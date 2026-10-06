@@ -101,7 +101,8 @@ static bool is_replayed_igniter_sequence_command(const SedsPacketView *pkt, uint
 static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
 static UNUSED_FUNCTION int32_t g_can_side_id = -1;
 #define BOARD_CAN_MAX_FRAME_BYTES 128U
-#define BOARD_SIDE_TRANSPORT_TEMPLATES 4U
+/* Shared CAN needs room for quiet peers alongside DAQ channel templates. */
+#define BOARD_SIDE_TRANSPORT_TEMPLATES 32U
 static uint8_t g_local_unix_valid = 0U;
 static uint64_t g_local_unix_ms = 0ULL;
 volatile int32_t g_telemetry_init_error_code = TELEMETRY_INIT_OK;
@@ -130,6 +131,7 @@ volatile uint32_t g_sim_heartbeat_fail = 0U;
 volatile uint32_t g_sim_heartbeat_wire_tx = 0U;
 volatile uint32_t g_telemetry_rx_packets = 0U;
 volatile uint32_t g_telemetry_rx_errors = 0U;
+volatile int32_t g_telemetry_rx_last_error = SEDS_OK;
 volatile uint32_t g_telemetry_timesync_poll_errors = 0U;
 /* Read-only ST-Link probes distinguish command execution, enqueue rejection,
  * and queue service errors without adding traffic to a failing return path. */
@@ -506,6 +508,7 @@ void rx_asynchronous(const uint8_t *bytes, size_t len)
   if (result != SEDS_OK)
   {
     g_telemetry_rx_errors++;
+    g_telemetry_rx_last_error = result;
   }
   else
   {

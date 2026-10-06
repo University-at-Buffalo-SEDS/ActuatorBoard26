@@ -2,6 +2,11 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
+#include "can_tx_queue.h"
+unsigned mock_irq;
+void *telemetry_can_tx_allocate(size_t n) { assert(!mock_irq); return malloc(n); }
+void telemetryFree(void *p) { assert(!mock_irq); free(p); }
 
 typedef struct {
     FDCAN_TxHeaderTypeDef header;
@@ -97,17 +102,18 @@ int main(void)
     /* A board started on an absent bus must recover when a later send occurs. */
     mock_bus_off = 1U;
     const uint32_t starts_before_recovery = start_count;
+    can_bus_process_rx();
     assert(can_bus_send_bytes(raw, sizeof(raw), 3U) == HAL_OK);
     assert(stop_count == 2U);
     assert(start_count == starts_before_recovery + 1U);
     assert(abort_count == 1U);
 
-    /* A temporarily full three-slot FIFO must drain rather than dropping the
-     * next fragment of a larger SEDSNet packet. */
+    /* A full hardware FIFO returns immediately; ownership queues retry it. */
     fifo_full_reads_remaining = 2U;
     const uint32_t reads_before_wait = fifo_level_reads;
-    assert(can_bus_send_bytes(raw, sizeof(raw), 3U) == HAL_OK);
-    assert(fifo_level_reads >= reads_before_wait + 3U);
+    assert(can_bus_send_bytes(raw, sizeof(raw), 3U) == HAL_BUSY);
+    assert(fifo_level_reads == reads_before_wait + 1U);
+    fifo_full_reads_remaining = 0U;
 
     can_bus_test_inject(3U, raw, sizeof(raw));
     can_bus_process_rx();

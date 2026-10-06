@@ -19,8 +19,8 @@ class CanHardwareContract(unittest.TestCase):
 
     def test_large_packets_stream_through_the_bounded_hardware_fifo(self):
         can = (ROOT / "Core/Src/can_bus.c").read_text()
-        self.assertIn("can_bus_wait_for_tx_slot", can)
-        self.assertIn("CAN_BUS_TX_ENQUEUE_TIMEOUT_MS 5U", can)
+        self.assertNotIn("can_bus_wait_for_tx_slot", can)
+        self.assertIn("return can_tx_queue_submit(bytes, len, std_id);", can)
         self.assertNotIn(
             "HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) < (uint32_t)frag_cnt",
             can,

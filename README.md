@@ -167,3 +167,13 @@ not hardware qualification.
 `--allocator tlsf` selects the board-owned TLSF allocator for SEDSnet.
 ThreadX scheduling and thread stacks retain their existing ownership. The default is `threadx`.
 TLSF coalesces adjacent free blocks; packet-arena compaction is a separate option.
+
+CAN side frames now enter a bounded asynchronous ownership queue. A full
+hardware FIFO retains the exact next fragment rather than partially rejecting
+the logical frame. IRQ service performs no allocation or release; foreground
+service reclaims completed buffers. Queued frames expire after one second,
+with a 6 KiB byte cap and 48-packet cap, leaving 4 KiB allocator headroom.
+
+The shared-CAN transport cache retains 32 templates so high-rate DAQ channels
+do not continually displace the quiet peers needed for command acknowledgements.
+Receive errors retain their last error code for passive diagnosis.

@@ -145,6 +145,7 @@ def run_host_tests(ui: UI, repo_root: Path) -> None:
         "-I", str(repo_root / "tests" / "mocks"),
         "-I", str(repo_root / "Core" / "Inc"),
         str(repo_root / "Core" / "Src" / "can_bus.c"),
+        str(repo_root / "Core" / "Src" / "can_tx_queue.c"),
         str(repo_root / "tests" / "test_can_bus.c"),
         "-o", str(can_test),
     ], cwd=repo_root)

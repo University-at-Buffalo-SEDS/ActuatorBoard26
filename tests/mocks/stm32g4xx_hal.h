@@ -1,4 +1,5 @@
 #pragma once
+#include "cmsis_compiler.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -58,6 +59,8 @@ typedef struct {
 #define FDCAN_REJECT_REMOTE 0U
 #define FDCAN_IT_RX_FIFO0_NEW_MESSAGE 1U
 #define FDCAN_IT_RX_FIFO1_NEW_MESSAGE 2U
+#define FDCAN_IT_TX_FIFO_EMPTY 4U
+#define FDCAN_IT_TX_COMPLETE 8U
 #define FDCAN_RX_FIFO0 0U
 #define FDCAN_RX_FIFO1 1U
 
