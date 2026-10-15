@@ -43,7 +43,7 @@
 #endif
 
 #ifndef CAN_BUS_POLLING
-#define CAN_BUS_POLLING 1
+#define CAN_BUS_POLLING 0
 #endif
 
 // =========================
@@ -272,20 +272,21 @@ static inline void rb_push(uint32_t std_id, const uint8_t *data, uint8_t len) {
 //  - After observing head != tail, we must ensure subsequent reads of the slot
 //    see the writes that happened-before the producer published head.
 //  - `__DMB()` acts as an acquire barrier here.
-static inline int rb_pop(can_bus_rx_frame_t *out) {
-  uint16_t t = g_rx_tail;
-  uint16_t h = g_rx_head;
-
-  if (h == t)
+static inline int rb_pop(can_bus_rx_frame_t *out)
+{
+  const uint32_t irq_mask = __get_PRIMASK();
+  __disable_irq();
+  const uint16_t t = g_rx_tail;
+  if (g_rx_head == t) {
+    __set_PRIMASK(irq_mask);
     return 0;
-
-  __DMB(); // ensure slot contents are visible after seeing head advance
-           // (acquire)
-
+  }
+  /* The ISR may evict the oldest slot; keep copy and tail update atomic. */
+  __DMB();
   *out = g_rx_ring[t];
-
-  __DMB(); // ensure slot read completes before we advance tail (conservative)
   g_rx_tail = rb_next(t);
+  __DMB();
+  __set_PRIMASK(irq_mask);
   return 1;
 }
 
@@ -337,7 +338,9 @@ static void can_bus_drain_rx_fifo(FDCAN_HandleTypeDef *hfdcan, uint32_t rx_fifo)
   FDCAN_RxHeaderTypeDef hdr;
   uint8_t data[64];
 
-  while (HAL_FDCAN_GetRxFifoFillLevel(hfdcan, rx_fifo) > 0U) {
+  uint32_t remaining = 3U; /* Physical FIFO depth; bound interrupt work. */
+  while (remaining-- > 0U &&
+         HAL_FDCAN_GetRxFifoFillLevel(hfdcan, rx_fifo) > 0U) {
     if (HAL_FDCAN_GetRxMessage(hfdcan, rx_fifo, &hdr, data) != HAL_OK) {
       break;
     }

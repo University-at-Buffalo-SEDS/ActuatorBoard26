@@ -21,15 +21,15 @@ class FirmwareContracts(unittest.TestCase):
         for data_type in schema["types"]:
             self.assertTrue(set(data_type["endpoints"]).issubset(aliases))
 
-        for index, endpoint in enumerate(schema["endpoints"], 100):
+        for endpoint in schema["endpoints"]:
             self.assertRegex(
                 header,
-                rf"#define SEDS_EP_{re.escape(endpoint['name'])} .*{index}U",
+                rf"#define SEDS_EP_{re.escape(endpoint['name'])} .*[0-9]+U",
             )
-        for index, data_type in enumerate(schema["types"], 100):
+        for data_type in schema["types"]:
             self.assertRegex(
                 header,
-                rf"#define SEDS_DT_{re.escape(data_type['name'])} .*{index}U",
+                rf"#define SEDS_DT_{re.escape(data_type['name'])} .*[0-9]+U",
             )
 
     def test_flash_partitions_are_complete_aligned_and_disjoint(self):

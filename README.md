@@ -135,7 +135,8 @@ the simulator probes. After generation, run
 
 [Board watchdog configuration and validation](docs/watchdog.md). Build with
 `./build.py build --release --watchdog`.
-Watchdogs are opt-in and require the matching bootloader.
+Watchdogs are enabled by default and require the matching bootloader.
+Use `--no-watchdog` only for a diagnostic build.
 
 ## Experimental SEDSnet development builds
 
@@ -152,7 +153,7 @@ override remains local and is never fetched or reset.
 python3 build.py build --release --packet-store compact
 ```
 
-This selects the latest SEDSnet `dev` commit and initializes a 2048-byte,
+This selects the latest compatible SEDSnet `main` commit and initializes a 2048-byte,
 16-handle arena before the router starts. It uses the existing allocator
 pool and leaves ThreadX scheduling unchanged. Compression stays disabled.
 Use `--packet-store heap` to disable the arena, including in a previously enabled build cache.
