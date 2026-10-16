@@ -10,4 +10,6 @@ void *telemetry_tlsf_malloc(size_t size);
 void telemetry_tlsf_free(void *ptr);
 void telemetry_tlsf_sample(void);
 bool telemetry_tlsf_admit(size_t additional, size_t largest);
+/* Bounded async priority-CAN copy; retains a full working estimate. */
+bool telemetry_tlsf_admit_can_control(size_t bytes);
 #endif

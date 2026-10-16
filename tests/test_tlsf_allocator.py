@@ -66,6 +66,18 @@ int main(int argc,char**argv){
  assert(!telemetry_tlsf_admit(SIZE_MAX, 1));
  assert(!telemetry_tlsf_admit(0, SIZE_MAX));
  assert(mock_irq==0);
+ // Reproduce a warmed router with <4 KiB ordinary reserve plus copy cost.
+ void *pressure[1024];unsigned held=0;
+ while(held<1024 && telemetry_tlsf_admit(640,128)){
+  pressure[held]=telemetry_tlsf_malloc(128);assert(pressure[held++]);
+ }
+ assert(held && held<1024);
+ assert(!telemetry_tlsf_admit(640,128));
+ assert(telemetry_tlsf_admit_can_control(128));
+ assert(!telemetry_tlsf_admit_can_control(0));
+ assert(!telemetry_tlsf_admit_can_control(161));
+ void *control=telemetry_tlsf_malloc(128);assert(control);telemetry_tlsf_free(control);
+ for(unsigned i=0;i<held;i++)telemetry_tlsf_free(pressure[i]);
  void *items[64]={0};size_t sizes[64]={0};uint32_t rng=42;
  for(unsigned step=0;step<100000;step++){
   rng=rng*1664525U+1013904223U;unsigned i=(rng>>16)%64;
