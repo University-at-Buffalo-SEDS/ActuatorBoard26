@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,7 +78,7 @@ class OtaBuildScriptTests(unittest.TestCase):
         from sim.run_full import load_layout_for_build
 
         root = Path(build.__file__).resolve().parent
-        layout = load_layout_for_build(root, None)
+        layout = json.loads((root / "sim/board.json").read_text())
         probes = {
             probe["symbol"]: probe.get("maximum")
             for probe in layout["execution"]["memory_probes"]

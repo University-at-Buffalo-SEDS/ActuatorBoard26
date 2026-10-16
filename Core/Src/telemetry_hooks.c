@@ -189,9 +189,15 @@ void telemetry_unlock(void)
 void *telemetryMalloc(size_t xSize)
 {
 #ifdef TELEMETRY_USE_TLSF
+    if (xSize == 0U) xSize = 1U;
+    g_telemetry_last_alloc_request = (ULONG)xSize;
     void *ptr = telemetry_tlsf_malloc(xSize);
     if (ptr) ++g_telemetry_alloc_count;
-    else ++g_telemetry_alloc_fail;
+    else {
+        ++g_telemetry_alloc_fail;
+        g_telemetry_failed_alloc_request = (ULONG)xSize;
+        g_telemetry_failed_alloc_available = g_telemetry_tlsf_free_bytes;
+    }
     telemetry_memory_profile_sample();
     return ptr;
 #else
