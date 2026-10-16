@@ -171,3 +171,12 @@ bool telemetry_tlsf_admit_can_control(size_t bytes)
     return bytes != 0U && bytes <= 160U &&
         admit_impl(bytes + 512U, bytes, true);
 }
+
+/* The SDK validates CRC, wire size and fixed byte shape before this class.
+ * Retain its full working estimate and the allocator's emergency headroom. */
+bool telemetry_tlsf_admit_small_protected(size_t additional, size_t largest)
+{
+    if (additional < 2048U || additional > 2432U || largest == 0U || largest > 160U)
+        return telemetry_tlsf_admit(additional, largest);
+    return admit_impl(additional, largest, true);
+}
