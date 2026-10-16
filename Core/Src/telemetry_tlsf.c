@@ -169,5 +169,5 @@ bool telemetry_tlsf_admit(size_t additional, size_t largest)
 bool telemetry_tlsf_admit_can_control(size_t bytes)
 {
     return bytes != 0U && bytes <= 160U &&
-        admit_impl(2048U + 2U * bytes, bytes, true);
+        admit_impl(bytes + 512U, bytes, true);
 }

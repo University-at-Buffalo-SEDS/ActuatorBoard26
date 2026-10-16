@@ -51,7 +51,7 @@ UINT tx_byte_pool_info_get(TX_BYTE_POOL*p,void*n,ULONG*a,ULONG*f,void*x,void*y,v
 }
 extern volatile uint32_t g_telemetry_tlsf_active,g_telemetry_tlsf_init_failed;
 extern volatile uint32_t g_telemetry_tlsf_snapshot_count;
-extern volatile uint32_t g_telemetry_tlsf_live_bytes,g_telemetry_tlsf_peak_bytes;
+extern volatile uint32_t g_telemetry_tlsf_live_bytes,g_telemetry_tlsf_peak_bytes,g_telemetry_tlsf_region_bytes;
 extern volatile uint32_t g_telemetry_tlsf_free_bytes,g_telemetry_tlsf_largest_free;
 static uint64_t arenas[3][4096];
 int main(int argc,char**argv){
@@ -73,6 +73,10 @@ int main(int argc,char**argv){
  }
  assert(held && held<1024);
  assert(!telemetry_tlsf_admit(640,128));
+ while(g_telemetry_tlsf_region_bytes > g_telemetry_tlsf_live_bytes +
+       ((size_t)held+3U)*2U*sizeof(void*)+2400U){
+  pressure[held]=telemetry_tlsf_malloc(128);assert(pressure[held++]);assert(held<1024);
+ }
  assert(telemetry_tlsf_admit_can_control(128));
  assert(!telemetry_tlsf_admit_can_control(0));
  assert(!telemetry_tlsf_admit_can_control(161));
