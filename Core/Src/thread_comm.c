@@ -1,4 +1,5 @@
 #include "thread_comm.h"
+#include "board_abort_latch.h"
 
 static TX_MUTEX g_thread_comm_state_mutex;
 static TX_MUTEX g_thread_comm_ring_mutex;
@@ -69,7 +70,7 @@ UINT thread_comm_init(TX_BYTE_POOL *byte_pool)
 
     g_thread_comm_head = 0U;
     g_thread_comm_tail = 0U;
-    g_thread_comm_abort = 0U;
+    g_thread_comm_abort = board_abort_latch_is_set();
     g_thread_comm_flight_state = ACTUATOR_FLIGHT_STATE_STARTUP;
     g_thread_comm_expected_outputs.n20_on = 0U;
     g_thread_comm_expected_outputs.n2_on = 0U;
@@ -166,6 +167,7 @@ UINT thread_comm_set_abort(uint8_t abort_requested)
 
     if (abort_requested != 0U)
     {
+        board_abort_latch_set();
         g_thread_comm_abort = 1U;
     }
 

@@ -1,5 +1,8 @@
 #include "thread_comm.h"
 #include <assert.h>
+static uint8_t retained_abort;
+void board_abort_latch_set(void) { retained_abort=1U; }
+uint8_t board_abort_latch_is_set(void) { return retained_abort; }
 
 UINT tx_mutex_create(TX_MUTEX *mutex, const char *name, UINT inherit)
 { (void)name; (void)inherit; mutex->locked = 0U; return TX_SUCCESS; }
@@ -51,5 +54,6 @@ int main(void)
     assert(thread_comm_set_abort(1U) == TX_SUCCESS);
     assert(thread_comm_set_abort(0U) == TX_SUCCESS);
     assert(thread_comm_get_abort() == 1U);
+    assert(retained_abort == 1U);
     return 0;
 }

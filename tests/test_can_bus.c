@@ -6,6 +6,8 @@
 #include "can_tx_queue.h"
 unsigned mock_irq;
 void *telemetry_can_tx_allocate(size_t n) { assert(!mock_irq); return malloc(n); }
+void *telemetry_can_tx_allocate_priority(size_t n, uint8_t protected_control)
+{ (void)protected_control; return telemetry_can_tx_allocate(n); }
 void telemetryFree(void *p) { assert(!mock_irq); free(p); }
 
 typedef struct {
