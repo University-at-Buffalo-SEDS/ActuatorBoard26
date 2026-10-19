@@ -70,7 +70,7 @@ class QualificationContractTests(unittest.TestCase):
         self.assertIn("return can_tx_queue_submit(bytes, len, std_id);", can_bus)
         self.assertNotIn("can_bus_wait_for_tx_slot", can_bus)
         self.assertNotIn("< (uint32_t)frag_cnt", can_bus)
-        self.assertIn("BOARD_CAN_MAX_FRAME_BYTES 128U", telemetry)
+        self.assertIn("BOARD_CAN_MAX_FRAME_BYTES CAN_TX_ALIGNED_FRAME_BYTES", telemetry)
         self.assertIn('SEDSNET_MAX_QUEUE_BUDGET "8192"', cmake)
         self.assertNotIn("seds_router_export_topology_len", telemetry)
         self.assertIn("g_telemetry_discovery_seen = 1U", telemetry)

@@ -720,3 +720,5 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan,
 
   can_bus_drain_rx_fifo(hfdcan, FDCAN_RX_FIFO1);
 }
+
+uint32_t board_health_can_rx_drops(void) { return can_bus_rx_dropped_frames(); }
