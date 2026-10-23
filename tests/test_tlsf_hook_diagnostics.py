@@ -22,7 +22,7 @@ class TlsfHookDiagnosticsTests(unittest.TestCase):
         for variable in variables:
             self.assertIn(variable, source[:start], 'Hook uses an undeclared diagnostic: '+variable)
         definitions='\n'.join('volatile uint32_t '+v+';' for v in variables)
-        actor=ROOT.name=='ActuatorBoard26'
+        actor='g_telemetry_failed_alloc_request' in variables
         request='g_telemetry_failed_alloc_request' if actor else 'g_telemetry_alloc_failure_request'
         available='g_telemetry_failed_alloc_available' if actor else 'g_telemetry_alloc_failure_available'
         last='g_telemetry_last_alloc_request' if actor else 'g_telemetry_max_alloc_request'
