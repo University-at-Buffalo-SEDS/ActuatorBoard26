@@ -71,23 +71,27 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   /* USER CODE END App_ThreadX_MEM_POOL */
 
   /* USER CODE BEGIN App_ThreadX_Init */
+#ifdef TELEMETRY_ENABLED
   telemetry_set_byte_pool(byte_pool);
   /* Initialize telemetry lock used by Rust (telemetry_lock/telemetry_unlock). */
   telemetry_init_lock();
   
 
+#endif
   ret = thread_comm_init(byte_pool);
   if (ret != TX_SUCCESS)
   {
     Error_Handler();
   }
 
+#ifdef TELEMETRY_ENABLED
   ret = create_telemetry_thread(byte_pool);
   if (ret != TX_SUCCESS)
   {
     Error_Handler();
   }
 
+#endif
   ret = create_main_task(byte_pool);
   if (ret != TX_SUCCESS)
   {

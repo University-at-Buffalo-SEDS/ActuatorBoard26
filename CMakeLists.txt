@@ -26,6 +26,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
+option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 message("Build type: " ${CMAKE_BUILD_TYPE})
 
 # Enable CMake support for ASM and C languages
@@ -95,13 +96,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_bus.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_tx_queue.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c 
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/thread_comm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/main_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/safety_task.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ota_stream.c
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ota_stream.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/flight_state_cache.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/persistent_store.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/spark_stuff/igniter_driver.c
@@ -148,6 +149,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
 )
 
+if(ENABLE_TELEMETRY)
 # SEDSNet v4 runtime-schema networking. FetchContent copies the board-owned
 # schema into the crate before Cargo runs because embedded/no_std builds bundle
 # that file instead of opening a filesystem path at runtime.
@@ -191,6 +193,7 @@ configure_file("${SEDSNET_SCHEMA_FILE}"
 file(TOUCH "${sedsnet_SOURCE_DIR}/build.rs")
 target_link_libraries(${CMAKE_PROJECT_NAME} sedsnet::sedsnet)
 add_dependencies(${CMAKE_PROJECT_NAME} sedsnet_build)
+endif()
 set(TELEMETRY_TIMESYNC_MASTER_PRIO "-1" CACHE STRING "Timesync source priority. Values < 0 make this board a consumer; values >= 0 make it a source with that priority." FORCE)
 
 # LaunchCore bootloader. The board port is kept in this repository while the
@@ -316,7 +319,6 @@ if(LAUNCHCORE_DELTA_BASE_IMAGE)
 endif()
 
 # Option defaults to ON
-option(ENABLE_TELEMETRY "Enable the telemetry subsystem" ON)
 
 # Print its state for debugging
 message(STATUS "Telemetry enabled: ${ENABLE_TELEMETRY}")
@@ -331,7 +333,7 @@ endif()
 # Board-owned progress watchdog; deliberately independent of SEDSnet.
 option(ENABLE_BOARD_WATCHDOG "Enable independent hardware watchdog with task progress gating" ON)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_watchdog.c)
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_health.c)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_health.c>")
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$<BOOL:${ENABLE_BOARD_WATCHDOG}>)
 
 # Retained board-local abort; deliberately outside the generic network stack.

@@ -196,7 +196,11 @@ static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
         return now_ticks + start_delay_ticks;
     }
 
+#ifdef TELEMETRY_ENABLED
     const uint64_t now_ms = telemetry_unix_ms();
+#else
+    const uint64_t now_ms = 0ULL; /* No UTC; use the existing local tick deadline. */
+#endif
     if (now_ms == 0ULL)
     {
         return now_ticks + start_delay_ticks;
