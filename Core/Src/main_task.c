@@ -28,7 +28,8 @@ static void sample_main_task_stack(void)
     if (remaining < g_main_task_stack_remaining)
         g_main_task_stack_remaining = remaining;
 }
-#define UMBILICAL_STATUS_PERIOD_TICKS (5U * TX_TIMER_TICKS_PER_SECOND)
+/* GSE requires actual valve-state reports fresher than two seconds. */
+#define UMBILICAL_STATUS_PERIOD_TICKS TX_TIMER_TICKS_PER_SECOND
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
 #define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
 #define LAUNCH_SEQUENCE_IGNITER_ON_DURATION_MS 10000U
