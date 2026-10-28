@@ -67,6 +67,7 @@ launchcore_generate_linker_scripts(
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 include(cmake/packet_store.cmake)
+option(SEDSNET_COMPACT_PACKET_STORE "Use bounded SEDSnet packet stores" ON)
 include(cmake/tlsf_allocator.cmake)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     USER_VECT_TAB_ADDRESS VECT_TAB_OFFSET=0x00004200U

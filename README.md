@@ -138,7 +138,7 @@ the simulator probes. After generation, run
 Watchdogs are enabled by default and require the matching bootloader.
 Use `--no-watchdog` only for a diagnostic build.
 
-## Experimental SEDSnet development builds
+## SEDSnet build configuration
 
 Use `python3 build.py build --release --sedsnet-ref dev` to build the current
 SEDSnet `dev` commit. The same option is accepted by `test` and `flash`.
@@ -147,10 +147,10 @@ when the network is unavailable the last usable on-disk source is retained.
 The selected revision is printed during configure. An explicit CMake source
 override remains local and is never fetched or reset.
 
-### Experimental packet arena
+### Default TLSF and compact storage
 
 ```sh
-python3 build.py build --release --packet-store compact
+python3 build.py build --release
 ```
 
 This selects the latest compatible SEDSnet `main` commit and initializes a 2048-byte,
@@ -166,7 +166,7 @@ reliable status delivery. For network-pressure comparison tests, use
 not hardware qualification.
 
 `--allocator tlsf` selects the board-owned TLSF allocator for SEDSnet.
-ThreadX scheduling and thread stacks retain their existing ownership. The default is `threadx`.
+ThreadX scheduling and thread stacks retain their existing ownership. The defaults are `tlsf` and `compact`. Use `--allocator threadx --packet-store heap` for an explicit fallback.
 TLSF coalesces adjacent free blocks; packet-arena compaction is a separate option.
 
 CAN side frames now enter a bounded asynchronous ownership queue. A full
