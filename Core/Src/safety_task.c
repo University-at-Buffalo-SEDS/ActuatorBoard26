@@ -243,8 +243,12 @@ static void safety_check_heartbeat(void)
     /* Snapshot reception before local uptime: a concurrently received
      * heartbeat must not underflow the elapsed-time calculation. */
     const uint64_t now_ms = safety_now_ms();
+    const uint8_t flight_state = thread_comm_get_flight_state();
 
-    if (thread_comm_abort_allowed() == 0U)
+    /* Idle has no active filling operation to abandon on heartbeat loss.
+     * Keep the shared ADC/active-state policy and retained abort latch intact. */
+    if (flight_state <= ACTUATOR_FLIGHT_STATE_IDLE ||
+        flight_state >= ACTUATOR_FLIGHT_STATE_LAUNCH)
     {
         safety_heartbeat_missing_since_ms = 0ULL;
         return;
@@ -258,7 +262,7 @@ static void safety_check_heartbeat(void)
         {
             safety_heartbeat_timeout_count++;
             safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
-                                      last_heartbeat_ms, thread_comm_get_flight_state(),
+                                      last_heartbeat_ms, flight_state,
                                       0U, thread_comm_get_abort());
             (void)thread_comm_set_abort(1U);
             main_task_force_outputs_safe_off();
@@ -276,7 +280,7 @@ static void safety_check_heartbeat(void)
     {
         safety_heartbeat_timeout_count++;
         safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
-                                  last_heartbeat_ms, thread_comm_get_flight_state(),
+                                  last_heartbeat_ms, flight_state,
                                   0U, thread_comm_get_abort());
         (void)thread_comm_set_abort(1U);
         main_task_force_outputs_safe_off();

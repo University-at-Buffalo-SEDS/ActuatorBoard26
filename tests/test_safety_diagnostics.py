@@ -25,18 +25,22 @@ class SafetyDiagnosticsTests(unittest.TestCase):
 #include "safety_diagnostics.h"
 volatile safety_abort_diagnostic_t g_safety_first_abort;
 static uint64_t now_ms, heartbeat, safety_heartbeat_missing_since_ms;
-static uint32_t aborted, allowed = 1, calls;
+static uint32_t aborted, calls;
 static uint32_t safety_heartbeat_timeout_count;
 #define SAFETY_HEARTBEAT_TIMEOUT_MS 5000ULL
 static uint64_t safety_now_ms(void) { return now_ms; }
 static uint64_t thread_comm_get_groundstation_heartbeat_ms(void) { return heartbeat; }
 static uint32_t thread_comm_get_abort(void) { return aborted; }
-static uint32_t thread_comm_abort_allowed(void) { return allowed; }
 static uint32_t thread_comm_get_flight_state(void) { return 3; }
 static int thread_comm_set_abort(uint32_t value) { aborted=value; return 0; }
 """
+        if not valve:
+            header = (ROOT / "Core/Inc/thread_comm.h").read_text()
+            code += re.search(r"typedef enum \{.*?\} actuator_flight_state_t;", header, re.S).group()
         if valve:
             code += r"""
+static uint32_t allowed = 1;
+static uint32_t thread_comm_abort_allowed(void) { return allowed; }
 typedef uint32_t GPIO_PinState;
 #define Continuity_GPIO_Port 0
 #define Continuity_Pin 0
