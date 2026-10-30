@@ -1,6 +1,7 @@
 #include "board_watchdog.h"
 #include "AB-Threads.h"
 #include "main.h"
+#include "board_temperature.h"
 #include "thread_comm.h"
 #include "tx_api.h"
 #include "safety_diagnostics.h"
@@ -317,6 +318,7 @@ void safety_task_entry(ULONG initial_input)
     {
         board_watchdog_progress(BOARD_WATCHDOG_SAFETY);
         safety_check_heartbeat();
+        board_temperature_poll();
 
         if (thread_comm_abort_allowed() == 0U)
         {
