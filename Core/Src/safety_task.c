@@ -261,11 +261,12 @@ static void safety_check_heartbeat(void)
             ((now_ms - last_heartbeat_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS))
         {
             safety_heartbeat_timeout_count++;
-            safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
-                                      last_heartbeat_ms, flight_state,
-                                      0U, thread_comm_get_abort());
-            (void)thread_comm_set_abort(1U);
-            main_task_force_outputs_safe_off();
+            const uint32_t abort_before = thread_comm_get_abort();
+            if (thread_comm_request_automatic_abort() != 0U) {
+                safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
+                                          last_heartbeat_ms, flight_state, 0U, abort_before);
+                main_task_force_outputs_safe_off();
+            }
         }
         return;
     }
@@ -279,11 +280,12 @@ static void safety_check_heartbeat(void)
     if ((now_ms - safety_heartbeat_missing_since_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS)
     {
         safety_heartbeat_timeout_count++;
-        safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
-                                  last_heartbeat_ms, flight_state,
-                                  0U, thread_comm_get_abort());
-        (void)thread_comm_set_abort(1U);
-        main_task_force_outputs_safe_off();
+        const uint32_t abort_before = thread_comm_get_abort();
+        if (thread_comm_request_automatic_abort() != 0U) {
+            safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
+                                      last_heartbeat_ms, flight_state, 0U, abort_before);
+            main_task_force_outputs_safe_off();
+        }
     }
 }
 
@@ -332,12 +334,16 @@ void safety_task_entry(ULONG initial_input)
 
         if (safety_adc_start() != TX_SUCCESS)
         {
-            safety_record_first_abort(SAFETY_ABORT_ADC_START, safety_now_ms(),
-                                      thread_comm_get_groundstation_heartbeat_ms(),
-                                      thread_comm_get_flight_state(),
-                                      safety_adc_start_step, thread_comm_get_abort());
-            (void)thread_comm_set_abort(1U);
-            main_task_force_outputs_safe_off();
+            const uint64_t failure_ms = safety_now_ms();
+            const uint64_t heartbeat_ms = thread_comm_get_groundstation_heartbeat_ms();
+            const uint8_t flight_state = thread_comm_get_flight_state();
+            const uint32_t abort_before = thread_comm_get_abort();
+            if (thread_comm_request_automatic_abort() != 0U) {
+                safety_record_first_abort(SAFETY_ABORT_ADC_START, failure_ms,
+                                          heartbeat_ms, flight_state,
+                                          safety_adc_start_step, abort_before);
+                main_task_force_outputs_safe_off();
+            }
             tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
             continue;
         }

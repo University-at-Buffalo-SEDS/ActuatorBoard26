@@ -32,7 +32,8 @@ static uint64_t safety_now_ms(void) { return now_ms; }
 static uint64_t thread_comm_get_groundstation_heartbeat_ms(void) { return heartbeat; }
 static uint32_t thread_comm_get_abort(void) { return aborted; }
 static uint32_t thread_comm_get_flight_state(void) { return 3; }
-static int thread_comm_set_abort(uint32_t value) { aborted=value; return 0; }
+static uint32_t suppressed;
+static uint8_t thread_comm_request_automatic_abort(void) { if(aborted||suppressed)return 0;aborted=1;return 1; }
 """
         if not valve:
             header = (ROOT / "Core/Inc/thread_comm.h").read_text()
@@ -103,6 +104,13 @@ int main(void) {
             code += r"""
     assert(aborted);
     assert(g_safety_first_abort.reason==SAFETY_ABORT_INITIAL_HEARTBEAT);
+"""
+        code += r"""
+    /* A rejected automatic claim must not create a false first cause/effect. */
+    aborted=0;suppressed=1;heartbeat=1;now_ms=30000;
+    g_safety_first_abort=(safety_abort_diagnostic_t){0};
+    unsigned prior_calls=calls;safety_check_heartbeat();
+    assert(!aborted&&!g_safety_first_abort.reason&&calls==prior_calls);
 """
         code += "}\n"
         with tempfile.TemporaryDirectory() as tmp:

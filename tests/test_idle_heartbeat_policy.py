@@ -39,16 +39,28 @@ static uint32_t thread_comm_get_flight_state(void) {
     state_reads++;
     return change_after_snapshot && state_reads > 1 ? state_after_snapshot : state;
 }
-static int thread_comm_set_abort(uint32_t value) { aborted |= value; return 0; }
+static uint8_t retained_launch;
+static uint8_t board_launch_latch_is_set(void) { return retained_launch; }
+static void board_abort_latch_set(void) { aborted=1; }
+typedef unsigned TX_MUTEX;
+#define TX_SUCCESS 0U
+#define TX_WAIT_FOREVER 0xffffffffU
+static unsigned g_thread_comm_state_mutex,g_thread_comm_initialized=1;
+static uint8_t g_recovery_pending;
+static uint32_t g_thread_comm_recovery_epoch=1;
+#define g_thread_comm_abort aborted
+#define g_thread_comm_flight_state state
+static unsigned tx_mutex_get(TX_MUTEX*m,unsigned wait) {(void)m;(void)wait;if(change_after_snapshot){state=state_after_snapshot;change_after_snapshot=0;}return TX_SUCCESS;}
+static unsigned tx_mutex_put(TX_MUTEX*m){(void)m;return TX_SUCCESS;}
 static void main_task_force_outputs_safe_off(void) { calls++; }
 static uint32_t safety_sample_mismatch_mask(const safety_adc_sample_t *sample) { return sample->value; }
 '''
-        code += states + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n'
+        code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n'
         code += function(safety, 'safety_check_heartbeat') + '\n'
         code += function(safety, 'safety_process_adc_sample') + r'''
 static void reset(void) {
     now_ms=10000; heartbeat=1; safety_heartbeat_missing_since_ms=0;
-    aborted=calls=safety_heartbeat_timeout_count=0;
+    aborted=calls=safety_heartbeat_timeout_count=retained_launch=0;
     state_reads=change_after_snapshot=state_after_snapshot=0;
     safety_adc_mismatch_count=safety_adc_last_mismatch_mask=safety_adc_latched_mismatch_mask=0;
     g_safety_first_abort=(safety_abort_diagnostic_t){0};
@@ -83,7 +95,8 @@ int main(void) {
     state=ACTUATOR_FLIGHT_STATE_PREFILL; reset(); change_after_snapshot=1;
     state_after_snapshot=ACTUATOR_FLIGHT_STATE_LAUNCH;
     safety_check_heartbeat();
-    assert(aborted && g_safety_first_abort.flight_state==ACTUATOR_FLIGHT_STATE_PREFILL);
+    assert(!aborted && !calls && g_safety_first_abort.reason==0);
+    /* Snapshot diagnostic is not permission to bypass the atomic launch guard. */
     state=ACTUATOR_FLIGHT_STATE_IDLE; reset();
     safety_heartbeat_missing_since_ms=123; safety_check_heartbeat();
     assert(safety_heartbeat_missing_since_ms==0);

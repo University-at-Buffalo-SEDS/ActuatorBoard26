@@ -1,7 +1,12 @@
 #include "thread_comm.h"
 #include <assert.h>
-static uint8_t retained_abort;
+static uint8_t retained_abort, retained_launch;
+void board_launch_latch_set(void) { retained_launch=1U; }
+uint8_t board_launch_latch_set_verified(void) { board_launch_latch_set(); return 1U; }
+uint8_t board_launch_latch_is_set(void) { return retained_launch; }
 void board_abort_latch_set(void) { retained_abort=1U; }
+uint8_t board_abort_latch_prepare_recovery(void) { retained_abort=1U; return 1U; }
+uint8_t board_abort_latch_clear_for_recovery(void) { retained_abort=retained_launch=0U; return 1U; }
 uint8_t board_abort_latch_is_set(void) { return retained_abort; }
 
 UINT tx_mutex_create(TX_MUTEX *mutex, const char *name, UINT inherit)

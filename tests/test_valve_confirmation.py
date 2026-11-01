@@ -11,6 +11,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class ValveConfirmationTests(unittest.TestCase):
     def test_success_rejection_close_and_abort_report_actual_state(self):
         source = (ROOT / 'Core/Src/main_task.c').read_text()
+        # Exercise the manual effect switch, not the distinct automatic callback.
+        source = source[source.index('static void handle_command('):]
         cases = []
         for command in ('CMD_NITROGEN_OPEN', 'CMD_NITROGEN_CLOSE',
                         'CMD_NITROUS_OPEN', 'CMD_NITROUS_CLOSE'):

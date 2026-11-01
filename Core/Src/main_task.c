@@ -2,6 +2,7 @@
 #include "AB-Threads.h"
 #include "tx_api.h"
 #include "thread_comm.h"
+#include "board_recovery.h"
 #include "main.h"
 #include "telemetry.h"
 #include "status_report_retry.h"
@@ -282,11 +283,45 @@ static void service_launch_sequence(void)
     }
 }
 
+/* Only bounded driver GPIO accesses and local state updates execute under the
+ * launch-state mutex. SDK publication and expected-output snapshots follow
+ * after unlock, so network admission cannot block launch serialization. */
+static void apply_automatic_valve(uint8_t command)
+{
+    switch (command) {
+    case CMD_NITROGEN_OPEN:
+        if (solenoidOn(&n2_solenoid) == 0) g_nitrogen_open = 1U;
+        break;
+    case CMD_NITROGEN_CLOSE:
+        solenoidOff(&n2_solenoid); g_nitrogen_open = 0U; break;
+    case CMD_NITROUS_OPEN:
+        if (solenoidOn(&n20_solenoid) == 0) g_nitrous_open = 1U;
+        break;
+    case CMD_NITROUS_CLOSE:
+        solenoidOff(&n20_solenoid); g_nitrous_open = 0U; break;
+    default: break;
+    }
+}
+
 static void handle_command(thread_comm_msg_t cmd)
 {
     if (thread_comm_get_abort() != 0U)
     {
         main_task_force_outputs_safe_off();
+        return;
+    }
+
+    if ((cmd.cmd & THREAD_COMM_AUTOMATIC_TAG) != 0U) {
+        if (thread_comm_apply_automatic(cmd, apply_automatic_valve) != 0U) {
+            const uint8_t command = cmd.cmd & (uint8_t)~THREAD_COMM_AUTOMATIC_TAG;
+            g_sim_last_valve_command = command;
+            g_sim_last_valve_command_ms = ((uint64_t)tx_time_get() * 1000ULL) / TX_TIMER_TICKS_PER_SECOND;
+            publish_expected_outputs();
+            if (command == CMD_NITROGEN_OPEN || command == CMD_NITROGEN_CLOSE)
+                (void)publish_umbilical_status(CMD_NITROGEN_OPEN, g_nitrogen_open);
+            else
+                (void)publish_umbilical_status(CMD_NITROUS_OPEN, g_nitrous_open);
+        }
         return;
     }
 
@@ -367,6 +402,47 @@ static void handle_command(thread_comm_msg_t cmd)
     }
 }
 
+
+/* Register readback is commanded electrical state, never valve-position proof. */
+static uint8_t recovery_read_outputs(uint32_t *mask)
+{
+    uint32_t value = 0U;
+    if ((IGNITER_PIN_GPIO_Port->ODR & IGNITER_PIN_Pin) != 0U) value |= 1U;
+    if ((NITROGEN_PIN_GPIO_Port->ODR & NITROGEN_PIN_Pin) != 0U) value |= 2U;
+    if ((NITROUS_PIN_GPIO_Port->ODR & NITROUS_PIN_Pin) != 0U) value |= 4U;
+    if ((BACKUP_VALVE_EN_GPIO_Port->ODR & BACKUP_VALVE_EN_Pin) != 0U) value |= 8U;
+    if ((STEPPER_SLEEP_GPIO_Port->ODR & STEPPER_SLEEP_Pin) != 0U) value |= 16U;
+    if ((N2_SIG_GPIO_Port->ODR & N2_SIG_Pin) != 0U) value |= 32U;
+    if ((N20_SIG_GPIO_Port->ODR & N20_SIG_Pin) != 0U) value |= 64U;
+    *mask = value;
+    return BOARD_RECOVERY_OUTPUTS_VALID | (value == 0U ? BOARD_RECOVERY_SAFE_OUTPUTS : 0U) |
+        (g_aborted != 0U && g_launch_sequence_active == 0U ? BOARD_RECOVERY_OWNER_STOPPED : 0U);
+}
+static uint8_t recovery_prepare_outputs(uint8_t desired)
+{
+    if (desired == 0U) {
+        HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(N2_SIG_GPIO_Port, N2_SIG_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(N20_SIG_GPIO_Port, N20_SIG_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
+        stepperSleep(&stepper);
+    }
+    uint32_t mask;
+    return (recovery_read_outputs(&mask) & BOARD_RECOVERY_SAFE_OUTPUTS) != 0U;
+}
+static void recovery_finish_owner(void)
+{
+    g_aborted = 0U;
+    g_launch_sequence_active = 0U;
+    g_launch_sequence_igniter_started = 0U;
+    g_launch_sequence_holdoff_active = 0U;
+    g_plumbing_retract_active = 0U;
+    g_plumbing_retract_steps_remaining = 0U;
+    g_igniter_on = g_nitrogen_open = g_nitrous_open = 0U;
+}
+
 void main_task_entry(ULONG initial_input)
 {
     (void)initial_input;
@@ -378,12 +454,14 @@ void main_task_entry(ULONG initial_input)
     thread_comm_msg_t msg;
     ULONG last_umbilical_status_ticks = tx_time_get();
 
+    board_recovery_bind_owner(recovery_read_outputs, recovery_prepare_outputs, recovery_finish_owner);
     publish_all_umbilical_statuses();
     publish_expected_outputs();
 
     for (;;)
     {
         board_watchdog_progress(BOARD_WATCHDOG_CONTROL);
+        thread_comm_service_board_recovery();
         sample_main_task_stack();
         g_main_task_loop_count++;
         if (thread_comm_get_abort() != 0U)
