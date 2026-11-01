@@ -265,7 +265,8 @@ static void safety_check_heartbeat(void)
             if (thread_comm_request_automatic_abort() != 0U) {
                 safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
                                           last_heartbeat_ms, flight_state, 0U, abort_before);
-                main_task_force_outputs_safe_off();
+                /* Retained Abort is consumed by the control owner; do not
+                 * mutate a later recovered sequence from this producer. */
             }
         }
         return;
@@ -284,7 +285,7 @@ static void safety_check_heartbeat(void)
         if (thread_comm_request_automatic_abort() != 0U) {
             safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
                                       last_heartbeat_ms, flight_state, 0U, abort_before);
-            main_task_force_outputs_safe_off();
+            /* Control owner observes the retained Abort and owns safe outputs. */
         }
     }
 }
@@ -342,7 +343,8 @@ void safety_task_entry(ULONG initial_input)
                 safety_record_first_abort(SAFETY_ABORT_ADC_START, failure_ms,
                                           heartbeat_ms, flight_state,
                                           safety_adc_start_step, abort_before);
-                main_task_force_outputs_safe_off();
+                /* Retained Abort is consumed by the control owner; do not
+                 * mutate a later recovered sequence from this producer. */
             }
             tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
             continue;

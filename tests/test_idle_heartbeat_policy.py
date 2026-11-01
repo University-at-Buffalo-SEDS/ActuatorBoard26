@@ -52,7 +52,7 @@ static uint32_t g_thread_comm_recovery_epoch=1;
 #define g_thread_comm_flight_state state
 static unsigned tx_mutex_get(TX_MUTEX*m,unsigned wait) {(void)m;(void)wait;if(change_after_snapshot){state=state_after_snapshot;change_after_snapshot=0;}return TX_SUCCESS;}
 static unsigned tx_mutex_put(TX_MUTEX*m){(void)m;return TX_SUCCESS;}
-static void main_task_force_outputs_safe_off(void) { calls++; }
+void main_task_force_outputs_safe_off(void) { calls++; }
 static uint32_t safety_sample_mismatch_mask(const safety_adc_sample_t *sample) { return sample->value; }
 '''
         code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n'
@@ -72,7 +72,7 @@ int main(void) {
         unsigned heartbeat_allowed=state>ACTUATOR_FLIGHT_STATE_IDLE && state<ACTUATOR_FLIGHT_STATE_LAUNCH;
         assert(thread_comm_abort_allowed()==shared_allowed);
         safety_check_heartbeat();
-        assert(aborted==heartbeat_allowed && calls==heartbeat_allowed);
+        assert(aborted==heartbeat_allowed && calls==0);
         assert(safety_heartbeat_timeout_count==heartbeat_allowed);
         assert(g_safety_first_abort.reason==(heartbeat_allowed ? SAFETY_ABORT_HEARTBEAT : 0));
         reset(); heartbeat=0;
@@ -103,7 +103,7 @@ int main(void) {
     state=ACTUATOR_FLIGHT_STATE_PREFILL; heartbeat=now_ms;
     safety_check_heartbeat(); assert(!aborted);
     now_ms+=4999; safety_check_heartbeat(); assert(!aborted);
-    now_ms++; safety_check_heartbeat(); assert(aborted && calls==1);
+    now_ms++; safety_check_heartbeat(); assert(aborted && calls==0); /* Producer only latches; main-task owner applies outputs. */
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

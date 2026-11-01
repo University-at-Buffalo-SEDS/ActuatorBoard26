@@ -188,6 +188,13 @@ def popen(ui: UI, cmd: list[str], cwd: Optional[Path] = None) -> subprocess.Pope
 
 
 def run_host_tests(ui: UI, repo_root: Path) -> None:
+    # Native ownership tests link the real matching SDK. No manual archive
+    # flag is required; source selection and host builds use an owned cache.
+    import runpy
+    try:
+        runpy.run_path(str(repo_root / "tests/native_sdk.py"))["prepare_native_sdk"](repo_root)
+    except (RuntimeError, OSError, ValueError, KeyError) as error:
+        raise FriendlyError("Host SDK native prerequisite: " + str(error)) from None
     test_build = repo_root / "build" / "host-tests"
     test_build.mkdir(parents=True, exist_ok=True)
     cc = os.environ.get("CC", "cc")

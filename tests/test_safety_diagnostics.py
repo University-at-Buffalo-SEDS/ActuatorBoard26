@@ -33,7 +33,7 @@ static uint64_t thread_comm_get_groundstation_heartbeat_ms(void) { return heartb
 static uint32_t thread_comm_get_abort(void) { return aborted; }
 static uint32_t thread_comm_get_flight_state(void) { return 3; }
 static uint32_t suppressed;
-static uint8_t thread_comm_request_automatic_abort(void) { if(aborted||suppressed)return 0;aborted=1;return 1; }
+static uint8_t thread_comm_request_automatic_abort(void) { if(aborted||suppressed)return 0;aborted=1;calls++;return 1; }
 """
         if not valve:
             header = (ROOT / "Core/Inc/thread_comm.h").read_text()
@@ -55,11 +55,10 @@ static uint32_t safety_continuity_loss_count, safety_continuity_loss_latched_cou
 static uint32_t safety_launch_continuity_timeout_count;
 static uint64_t safety_launch_continuity_loss_since_ms;
 static uint32_t HAL_GPIO_ReadPin(int p, int n) { (void)p; (void)n; return continuity; }
-static int thread_comm_send(int cmd, int wait) { (void)cmd; (void)wait; calls++; return 0; }
 static int telemetry_broadcast_abort(const char *msg) { assert(msg[0]); return 0; }
 """
-        else:
-            code += "static void main_task_force_outputs_safe_off(void) { calls++; }\n"
+        # Count retained Abort admission. Output ownership is exercised by
+        # test_safety_owner_race against the actual main-owner safe-off routine.
         code += functions + r"""
 int main(void) {
     /* Ten minutes of regular heartbeats, including concurrent newer samples.
