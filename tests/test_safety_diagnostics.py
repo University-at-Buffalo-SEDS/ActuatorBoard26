@@ -34,6 +34,7 @@ static uint32_t thread_comm_get_abort(void) { return aborted; }
 static uint32_t thread_comm_get_flight_state(void) { return 3; }
 static uint32_t suppressed;
 static uint8_t thread_comm_request_automatic_abort(void) { if(aborted||suppressed)return 0;aborted=1;calls++;return 1; }
+static uint8_t thread_comm_request_heartbeat_abort(void) { return thread_comm_request_automatic_abort(); }
 """
         if not valve:
             header = (ROOT / "Core/Inc/thread_comm.h").read_text()

@@ -262,7 +262,7 @@ static void safety_check_heartbeat(void)
         {
             safety_heartbeat_timeout_count++;
             const uint32_t abort_before = thread_comm_get_abort();
-            if (thread_comm_request_automatic_abort() != 0U) {
+            if (thread_comm_request_heartbeat_abort() != 0U) {
                 safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
                                           last_heartbeat_ms, flight_state, 0U, abort_before);
                 /* Retained Abort is consumed by the control owner; do not
@@ -282,7 +282,7 @@ static void safety_check_heartbeat(void)
     {
         safety_heartbeat_timeout_count++;
         const uint32_t abort_before = thread_comm_get_abort();
-        if (thread_comm_request_automatic_abort() != 0U) {
+        if (thread_comm_request_heartbeat_abort() != 0U) {
             safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
                                       last_heartbeat_ms, flight_state, 0U, abort_before);
             /* Control owner observes the retained Abort and owns safe outputs. */

@@ -55,7 +55,7 @@ static unsigned tx_mutex_put(TX_MUTEX*m){(void)m;return TX_SUCCESS;}
 void main_task_force_outputs_safe_off(void) { calls++; }
 static uint32_t safety_sample_mismatch_mask(const safety_adc_sample_t *sample) { return sample->value; }
 '''
-        code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n'
+        code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n' + function(shared, 'thread_comm_request_heartbeat_abort') + '\n'
         code += function(safety, 'safety_check_heartbeat') + '\n'
         code += function(safety, 'safety_process_adc_sample') + r'''
 static void reset(void) {
