@@ -64,6 +64,7 @@ static uint8_t g_plumbing_retracted = 0U;
 static _Atomic uint8_t g_plumbing_retract_active = 0U;
 static _Atomic uint8_t g_launch_sequence_active = 0U;
 static uint32_t g_launch_manual_epoch;
+static thread_comm_launch_owner_t g_launch_owner;
 static uint8_t g_launch_sequence_igniter_started = 0U;
 static _Atomic uint8_t g_launch_sequence_holdoff_active = 0U;
 static uint32_t g_plumbing_retract_steps_remaining = 0U;
@@ -338,8 +339,11 @@ static void start_launch_sequence_locked(void*context){
  g_launch_sequence_igniter_started=0U;g_launch_sequence_active=1U;
 }
 static void start_launch_sequence(uint64_t source,uint32_t epoch){
- LaunchStart request={launch_sequence_igniter_start_ticks(source),epoch};
- (void)thread_comm_manual_effect_owned(source,epoch,start_launch_sequence_locked,&request);
+ thread_comm_launch_owner_t owner={0};
+ if(!thread_comm_launch_claim(source,epoch,&owner))return;
+ LaunchStart request={launch_sequence_igniter_start_ticks(owner.source_utc),owner.epoch};
+ g_launch_owner=owner;
+ (void)thread_comm_launch_begin_owned(&owner,start_launch_sequence_locked,&request);
 }
 
 static void service_launch_sequence_locked(void*context)
@@ -380,7 +384,8 @@ static void service_launch_sequence_locked(void*context)
 }
 static void service_launch_sequence(void){
  uint8_t previous=g_igniter_on;
- (void)thread_comm_manual_effect_owned(0U,g_launch_manual_epoch,service_launch_sequence_locked,0);
+ (void)thread_comm_launch_effect_owned(&g_launch_owner,service_launch_sequence_locked,0);
+ if(!g_launch_sequence_active&&!g_launch_sequence_holdoff_active)thread_comm_launch_complete_owned(&g_launch_owner);
  if(previous!=g_igniter_on){(void)publish_umbilical_status(CMD_IGNITER_ON,g_igniter_on);publish_expected_outputs();}
 }
 
@@ -414,8 +419,13 @@ static void apply_manual_valve_locked(void*context){
 static void invalidate_motion_provenance_locked(bool blocked,void*context);
 static void handle_command(thread_comm_msg_t cmd,uint32_t command_epoch)
 {
+    /* The narrow receipt path owns an already accepted original Launch.
+     * No new generic command/storage readiness exception is created. */
+    if(cmd.cmd==CMD_IGNITER_SEQUENCE){
+        start_launch_sequence(cmd.timestamp_ms,command_epoch);return;
+    }
     if (!persistent_store_controls_ready()) {
-        main_task_force_outputs_safe_off();
+        if(!thread_comm_launch_continuity())main_task_force_outputs_safe_off();
         return;
     }
 
@@ -621,7 +631,7 @@ void main_task_entry(ULONG initial_input)
         board_bootstrap_storage_service();
         fill_settings_service();
         if(g_fill_mode_status_pending){g_fill_mode_status_pending=false;(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,0U);}
-        if (!persistent_store_controls_ready()) main_task_force_outputs_safe_off();
+        if (!persistent_store_controls_ready()&&!thread_comm_launch_continuity()) main_task_force_outputs_safe_off();
         sample_main_task_stack();
         g_main_task_loop_count++;
         if (thread_comm_get_abort() != 0U)

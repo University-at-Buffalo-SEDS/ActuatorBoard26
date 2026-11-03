@@ -73,43 +73,6 @@ static void print_data_no_telem(void *data, size_t len)
 #define TELEMETRY_TIMESYNC_ROLE_CONSUMER 0U
 #define TELEMETRY_TIMESYNC_ROLE_SOURCE 1U
 
-static bool is_replayed_igniter_sequence_command(const SedsPacketView *pkt, uint8_t cmd_u8)
-{
-  static uint8_t have_last = 0U;
-  static uint64_t last_timestamp = 0U;
-  static char last_sender[32];
-  static size_t last_sender_len = 0U;
-
-  if (cmd_u8 != CMD_IGNITER_SEQUENCE)
-  {
-    return false;
-  }
-
-  const char *sender = pkt->sender;
-  size_t sender_len = pkt->sender_len;
-  if (sender == NULL)
-  {
-    sender = "";
-    sender_len = 0U;
-  }
-
-  if ((have_last != 0U) &&
-      (pkt->timestamp == last_timestamp) &&
-      (sender_len == last_sender_len) &&
-      (memcmp(sender, last_sender, sender_len) == 0))
-  {
-    return true;
-  }
-
-  last_timestamp = pkt->timestamp;
-  last_sender_len = (sender_len < sizeof(last_sender)) ? sender_len : sizeof(last_sender);
-  if (last_sender_len > 0U)
-  {
-    memcpy(last_sender, sender, last_sender_len);
-  }
-  have_last = 1U;
-  return false;
-}
 
 static UNUSED_FUNCTION uint8_t g_can_rx_subscribed = 0U;
 static UNUSED_FUNCTION int32_t g_can_side_id = -1;
@@ -247,6 +210,13 @@ static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *m
 
 SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
 {
+  /* An exact already committed original needs no new storage read/admission.
+   * Refused/uncertain queue attempts never appear in this owner receipt. */
+  if(pkt&&pkt->payload&&pkt->payload_len==1U&&pkt->payload[0]==CMD_IGNITER_SEQUENCE){
+    if(pkt->sender_len>THREAD_COMM_LAUNCH_SENDER_MAX||(!pkt->sender&&pkt->sender_len))return SEDS_BAD_ARG;
+    if(thread_comm_launch_original_accepted(pkt->timestamp,pkt->sender,(uint32_t)pkt->sender_len))return SEDS_OK;
+  }
+
   /* Publish storage-validated cutoff before state-lock admission; no NVM
    * getter runs under that lock. Refusal/IO is not a stale-command receipt. */
   if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
@@ -287,11 +257,6 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
     return admitted==TX_SUCCESS || admitted==THREAD_COMM_STALE_TIMESTAMP ? SEDS_OK : SEDS_ERR;
   }
 
-  if (is_replayed_igniter_sequence_command(pkt, cmd_u8))
-  {
-    return SEDS_OK;
-  }
-
   const thread_comm_msg_t msg = {
       .cmd = cmd_u8,
       .timestamp_ms = pkt->timestamp,
@@ -300,7 +265,7 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   /* A full command queue must not block the telemetry worker indefinitely.
    * Blocking here prevents CAN draining, discovery, time sync, and all future
    * commands, which presents as the board becoming unresponsive over time. */
-  const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? thread_comm_admit_network_launch(msg) :
+  const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? thread_comm_admit_network_launch_original(msg,pkt->sender,(uint32_t)pkt->sender_len) :
       thread_comm_admit_network(msg,pkt->timestamp);
   if (admitted==THREAD_COMM_STALE_TIMESTAMP) return SEDS_OK;
   if (admitted != TX_SUCCESS)

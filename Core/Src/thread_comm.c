@@ -5,6 +5,7 @@
 #include "board_recovery_floor.h"
 #include "bootstrap_owner.h"
 #include <stdatomic.h>
+#include <string.h>
 #include "board_commands.h"
 #include "safety_diagnostics.h"
 
@@ -48,11 +49,90 @@ static uint8_t (*g_bootstrap_stop)(void);
 static uint8_t g_bootstrap_finalizing;
 static bool bootstrap_state_release(void);
 static uint8_t safety_launch_inhibit_locked(void);
+static uint8_t g_thread_comm_flight_state = ACTUATOR_FLIGHT_STATE_STARTUP;
+/* One original accepted operation. Completion preserves continuity; only an
+ * explicit Stop/reset revokes it. No backup-marker-only/warm-boot replay. */
+enum {LAUNCH_NONE,LAUNCH_PENDING,LAUNCH_TAKEN,LAUNCH_RUNNING,LAUNCH_COMPLETED};
+static struct {
+ thread_comm_launch_owner_t owner;
+ char sender[THREAD_COMM_LAUNCH_SENDER_MAX];
+ uint32_t sender_len,slot;
+ uint8_t phase,initial_verified;
+} g_accepted_launch;
+static uint32_t g_launch_serial;
+static _Atomic uint8_t g_launch_continuity;
+static void launch_revoke_locked(void) {
+ g_accepted_launch.phase=LAUNCH_NONE;
+ atomic_store_explicit(&g_launch_continuity,0U,memory_order_release);
+}
+static uint8_t launch_source_valid_locked(uint64_t source) {
+ return source==0U || g_command_cutoff_ms==0U || source>g_command_cutoff_ms;
+}
+static uint8_t launch_identity_valid(const char*sender,uint32_t length) {
+ return length<=THREAD_COMM_LAUNCH_SENDER_MAX && (length==0U || sender!=0);
+}
+static uint8_t launch_record_live_locked(void) {
+ return g_thread_comm_recovery_epoch!=0U && g_thread_comm_recovery_epoch!=UINT32_MAX &&
+  g_accepted_launch.phase!=LAUNCH_NONE && g_accepted_launch.initial_verified &&
+  g_accepted_launch.owner.epoch==g_thread_comm_recovery_epoch && !g_thread_comm_abort && !g_recovery_pending &&
+  launch_source_valid_locked(g_accepted_launch.owner.source_utc);
+}
+static uint8_t launch_same_original_locked(uint64_t source,const char*sender,uint32_t length) {
+ return launch_identity_valid(sender,length) && launch_record_live_locked() &&
+  source==g_accepted_launch.owner.source_utc && length==g_accepted_launch.sender_len &&
+  (length==0U || memcmp(sender,g_accepted_launch.sender,length)==0);
+}
+static uint8_t launch_token_current_locked(const thread_comm_launch_owner_t*owner) {
+ return owner && owner->serial && owner->serial!=UINT32_MAX && launch_record_live_locked() &&
+  owner->serial==g_accepted_launch.owner.serial && owner->epoch==g_accepted_launch.owner.epoch &&
+  owner->source_utc==g_accepted_launch.owner.source_utc;
+}
+static void launch_accept_locked(uint64_t source,const char*sender,uint32_t length,uint32_t slot,uint32_t serial) {
+ g_accepted_launch.owner=(thread_comm_launch_owner_t){source,g_thread_comm_recovery_epoch,serial};
+ g_accepted_launch.sender_len=length;if(length)memcpy(g_accepted_launch.sender,sender,length);
+ g_accepted_launch.slot=slot;g_accepted_launch.initial_verified=1U;g_accepted_launch.phase=LAUNCH_PENDING;
+ g_launch_serial=serial;atomic_store_explicit(&g_launch_continuity,1U,memory_order_release);
+}
+uint8_t thread_comm_launch_continuity(void) {return atomic_load_explicit(&g_launch_continuity,memory_order_acquire);}
+uint8_t thread_comm_launch_original_accepted(uint64_t source,const char*sender,uint32_t length) {
+ if(!g_thread_comm_initialized||!launch_identity_valid(sender,length)||tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return 0U;
+ uint8_t accepted=launch_same_original_locked(source,sender,length);
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS)return 0U;
+ return accepted;
+}
+uint8_t thread_comm_launch_claim(uint64_t source,uint32_t epoch,thread_comm_launch_owner_t*out) {
+ if(!out||!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return 0U;
+ uint8_t current=launch_record_live_locked()&&g_accepted_launch.phase==LAUNCH_TAKEN&&
+  source==g_accepted_launch.owner.source_utc&&epoch==g_accepted_launch.owner.epoch;
+ if(current)*out=g_accepted_launch.owner;
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS)return 0U;
+ return current;
+}
+uint8_t thread_comm_launch_begin_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context) {
+ if(!apply||!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return 0U;
+ uint8_t current=launch_token_current_locked(owner)&&g_accepted_launch.phase==LAUNCH_TAKEN;
+ if(current){g_accepted_launch.phase=LAUNCH_RUNNING;g_thread_comm_flight_state=ACTUATOR_FLIGHT_STATE_LAUNCH;apply(context);}
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS)return 0U;
+ return current;
+}
+uint8_t thread_comm_launch_effect_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context) {
+ if(!apply||!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return 0U;
+ uint8_t current=launch_token_current_locked(owner)&&g_accepted_launch.phase==LAUNCH_RUNNING;
+ if(current)apply(context);
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS)return 0U;
+ return current;
+}
+void thread_comm_launch_complete_owned(const thread_comm_launch_owner_t*owner) {
+ if(!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return;
+ if(launch_token_current_locked(owner)&&g_accepted_launch.phase==LAUNCH_RUNNING)g_accepted_launch.phase=LAUNCH_COMPLETED;
+ (void)tx_mutex_put(&g_thread_comm_state_mutex);
+}
 static void thread_comm_latch_abort_locked(uint8_t new_manual_intent)
 {
+    launch_revoke_locked();
     const uint8_t new_owner = new_manual_intent != 0U || g_thread_comm_abort == 0U || g_recovery_pending != 0U;
     if (new_owner && g_thread_comm_recovery_epoch != 0U) {
-        g_thread_comm_recovery_epoch++;
+        launch_revoke_locked();g_thread_comm_recovery_epoch++;
     }
     g_recovery_pending = 0U;
     if (new_owner) {
@@ -63,7 +143,7 @@ static void thread_comm_latch_abort_locked(uint8_t new_manual_intent)
     g_thread_comm_abort = 1U;
 }
 
-static uint8_t g_thread_comm_flight_state = ACTUATOR_FLIGHT_STATE_STARTUP;
+
 static thread_comm_expected_outputs_t g_thread_comm_expected_outputs = {0U, 0U, 0U};
 static uint64_t g_thread_comm_groundstation_heartbeat_ms = 0ULL;
 static int32_t g_thread_comm_shared_value = 0;
@@ -213,6 +293,9 @@ UINT thread_comm_init(TX_BYTE_POOL *byte_pool)
     g_safety_report = (thread_comm_safety_report_t){0};
     g_safety_report_inflight_lease = g_safety_report_inflight_cause = g_safety_report_last_lease = 0U;
     g_safety_report_closing = 0U;
+    /* Queue initialization never reconstructs a physical operation from backup. */
+    launch_revoke_locked();
+    g_accepted_launch.initial_verified=0U;
     g_thread_comm_initialized = 1U;
 
     return TX_SUCCESS;
@@ -665,30 +748,33 @@ uint64_t thread_comm_get_groundstation_heartbeat_ms(void)
     return timestamp_ms;
 }
 
-static UINT thread_comm_admit_launch_impl(thread_comm_msg_t msg, uint8_t network)
+static UINT thread_comm_admit_launch_impl(thread_comm_msg_t msg,uint8_t network,const char*sender,uint32_t length)
 {
-    if (g_thread_comm_initialized == 0U ||
-        tx_mutex_get(&g_thread_comm_state_mutex, TX_WAIT_FOREVER) != TX_SUCCESS) {
-        return TX_MUTEX_ERROR;
-    }
-    UINT status = TX_QUEUE_ERROR;
-    if (network && (g_command_admission_fault || g_recovery_pending || g_fill_configuration_pending ||
-                    !network_timestamp_allowed_locked(msg.timestamp_ms))) {
-        status = g_command_admission_fault ? THREAD_COMM_COMMIT_UNCERTAIN : THREAD_COMM_STALE_TIMESTAMP;
-        (void)tx_mutex_put(&g_thread_comm_state_mutex);return status;
-    }
-    if (g_thread_comm_abort == 0U && persistent_store_controls_ready()) {
-        /* A failed queue admission stays inhibited until explicit recovery. */
-        if (safety_launch_inhibit_locked() != 0U) {
-            status = thread_comm_send_owned_nowait(msg);
-        }
-    }
-    (void)tx_mutex_put(&g_thread_comm_state_mutex);
-    return status;
+ if(msg.cmd!=CMD_IGNITER_SEQUENCE||!launch_identity_valid(sender,length)||!g_thread_comm_initialized||
+    tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return TX_MUTEX_ERROR;
+ UINT status=TX_QUEUE_ERROR;uint8_t newly_staged=0U;
+ if(g_accepted_launch.phase!=LAUNCH_NONE) {
+  status=launch_same_original_locked(msg.timestamp_ms,sender,length)?TX_SUCCESS:TX_QUEUE_ERROR;
+ } else if(g_thread_comm_recovery_epoch!=0U && g_thread_comm_recovery_epoch!=UINT32_MAX &&
+    g_launch_serial<UINT32_MAX-1U && !g_thread_comm_abort && !g_recovery_pending && !g_fill_configuration_pending &&
+    !g_command_admission_fault && persistent_store_controls_ready() &&
+    (!network||network_timestamp_allowed_locked(msg.timestamp_ms))) {
+  if(safety_launch_inhibit_locked()) {
+   const uint32_t slot=g_thread_comm_head,serial=g_launch_serial+1U;
+   status=thread_comm_send_owned_nowait(msg);
+   if(status==TX_SUCCESS){launch_accept_locked(msg.timestamp_ms,sender,length,slot,serial);newly_staged=1U;}
+  }
+ }
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS) {
+  /* This call owns only its new candidate, never an earlier accepted one. */
+  if(newly_staged){g_accepted_launch.initial_verified=0U;launch_revoke_locked();}
+  g_command_admission_fault=1U;return THREAD_COMM_COMMIT_UNCERTAIN;
+ }
+ return status;
 }
-
-UINT thread_comm_admit_launch(thread_comm_msg_t msg) {return thread_comm_admit_launch_impl(msg,0U);}
-UINT thread_comm_admit_network_launch(thread_comm_msg_t msg) {return thread_comm_admit_launch_impl(msg,1U);}
+UINT thread_comm_admit_launch(thread_comm_msg_t msg){return thread_comm_admit_launch_impl(msg,0U,0,0U);}
+UINT thread_comm_admit_network_launch(thread_comm_msg_t msg){return thread_comm_admit_launch_impl(msg,1U,0,0U);}
+UINT thread_comm_admit_network_launch_original(thread_comm_msg_t msg,const char*sender,uint32_t length){return thread_comm_admit_launch_impl(msg,1U,sender,length);}
 
 /* Atomic against launch admission/state updates. A suppressed stale automatic
  * request is acknowledged without queueing or changing outputs. Genuine queue
@@ -791,6 +877,7 @@ int32_t board_recovery_begin_prepare(uint8_t desired_state, uint32_t expected_ep
         /* Internal recovery barrier is not a NEW manual Stop: do not advance
          * epoch or broadcast ABORT. Failed backup verification keeps RAM safe
          * and returns before any floor/state flash can be attempted. */
+        launch_revoke_locked();
         g_safety_report_closing = 2U;
         g_safety_report.reason = 0U;
         g_thread_comm_abort = 1U;
@@ -894,7 +981,7 @@ static void service_board_recovery(bool explicit_fresh_owner)
                     g_bootstrap_finalizing=1U;g_bootstrap_binding.valid=0U;
                 }
                 g_recovery_completed_epoch = g_thread_comm_recovery_epoch;
-                g_thread_comm_recovery_epoch++;
+                launch_revoke_locked();g_thread_comm_recovery_epoch++;
             }
         }
     }
@@ -1042,10 +1129,19 @@ uint8_t thread_comm_manual_effect(uint64_t source,void(*apply)(void*),void*conte
 UINT thread_comm_receive_owned(thread_comm_msg_t*message,uint32_t*epoch)
 {
  if(!epoch||!message||!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return TX_MUTEX_ERROR;
+ const uint32_t slot=g_thread_comm_tail;
  UINT status=thread_comm_receive(message,TX_NO_WAIT);
- if(status==TX_SUCCESS)*epoch=g_thread_comm_recovery_epoch;
- (void)tx_mutex_put(&g_thread_comm_state_mutex);return status;
+ if(status==TX_SUCCESS) {
+  *epoch=g_thread_comm_recovery_epoch;
+  if(g_accepted_launch.phase==LAUNCH_PENDING&&slot==g_accepted_launch.slot&&
+    message->cmd==CMD_IGNITER_SEQUENCE&&message->timestamp_ms==g_accepted_launch.owner.source_utc&&launch_record_live_locked()) {
+   *epoch=g_accepted_launch.owner.epoch;g_accepted_launch.phase=LAUNCH_TAKEN;
+  }
+ }
+ if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS){g_command_admission_fault=1U;return THREAD_COMM_COMMIT_UNCERTAIN;}
+ return status;
 }
+
 uint32_t thread_comm_manual_epoch(void)
 {
  if(!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return 0U;

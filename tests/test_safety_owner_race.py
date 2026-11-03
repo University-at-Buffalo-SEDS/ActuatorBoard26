@@ -75,7 +75,7 @@ static uint8_t local_and_interleave(uint32_t reason,uint64_t now,uint64_t heartb
  assert(board_recovery_apply_safe(0,snapshot.abort_epoch,&snapshot)==-14);
  board_recovery_execute_owned();assert(!thread_comm_get_abort()&&!g_aborted);
  thread_comm_msg_t launch={.cmd=14,.timestamp_ms=10000};assert(thread_comm_admit_launch(launch)==TX_SUCCESS);
- start_launch_sequence(10000,thread_comm_manual_epoch());assert(g_launch_sequence_active&&board_launch_latch_is_set());
+ uint32_t launch_epoch=0;assert(thread_comm_receive_owned(&launch,&launch_epoch)==TX_SUCCESS);start_launch_sequence(launch.timestamp_ms,launch_epoch);assert(g_launch_sequence_active&&board_launch_latch_is_set());
  HAL_GPIO_WritePin(&ports[0],1,GPIO_PIN_SET);writes_when_relaunched=gpio_writes;recoveries++;return claimed;
 }
 static uint64_t telemetry_event_clock_snapshot(void){return 9000;}
@@ -106,7 +106,7 @@ int main(int argc,char**argv){
   owner=(ROOT/'Core/Src/main_task.c').read_text();safety=(ROOT/'Core/Src/safety_task.c').read_text()
   fill_helpers='#include \"fill_motion.h\"\nstatic FillMotion g_fill_motion;static bool g_fill_drive_fault;\n'+(ROOT/'Core/Src/fill_motion.c').read_text()+''.join(function(owner,name) for name in ['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked'])
   fill_helpers='#include \"fill_motion_status.h\"\nstatic FillMotionProvenance g_fill_provenance;\n'+fill_helpers+'\n'+(ROOT/'Core/Src/fill_motion_status.c').read_text()
-  for key,value in [('ACTUAL_FILL_HELPERS',fill_helpers),('PORTS',ports),('ACTUAL_FORCE',function(owner,'main_task_force_outputs_safe_off')),('ACTUAL_RECOVERY_FINISH',function(owner,'recovery_finish_base')+function(owner,'recovery_fill_rearm_ready')+function(owner,'recovery_finish_owner')),('ACTUAL_START','static uint32_t g_launch_manual_epoch;\n'+__import__('re').search(r'typedef struct\{[^\n]*\} LaunchStart;',owner).group(0)+'\n'+function(owner,'start_launch_sequence_locked')+'\n'+function(owner,'start_launch_sequence')),('ACTUAL_OWNER_ABORT',block(owner[owner.index('void main_task_entry('):],'if (thread_comm_get_abort() != 0U)\n        {')),('ACTUAL_HEARTBEAT',function(safety,'safety_check_heartbeat')),('ACTUAL_ADC_FAILURE',block(safety,'if (safety_adc_start() != TX_SUCCESS)'))]:code=code.replace(key,value)
+  for key,value in [('ACTUAL_FILL_HELPERS',fill_helpers),('PORTS',ports),('ACTUAL_FORCE',function(owner,'main_task_force_outputs_safe_off')),('ACTUAL_RECOVERY_FINISH',function(owner,'recovery_finish_base')+function(owner,'recovery_fill_rearm_ready')+function(owner,'recovery_finish_owner')),('ACTUAL_START','static uint32_t g_launch_manual_epoch;\nstatic thread_comm_launch_owner_t g_launch_owner;\n'+__import__('re').search(r'typedef struct\{[^\n]*\} LaunchStart;',owner).group(0)+'\n'+function(owner,'start_launch_sequence_locked')+'\n'+function(owner,'start_launch_sequence')),('ACTUAL_OWNER_ABORT',block(owner[owner.index('void main_task_entry('):],'if (thread_comm_get_abort() != 0U)\n        {')),('ACTUAL_HEARTBEAT',function(safety,'safety_check_heartbeat')),('ACTUAL_ADC_FAILURE',block(safety,'if (safety_adc_start() != TX_SUCCESS)'))]:code=code.replace(key,value)
   with tempfile.TemporaryDirectory(prefix='safety-owner-race-')as tmp:
    p=Path(tmp);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);binary=p/'test'
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),str(p/'test.c'),'-o',str(binary)],check=True)

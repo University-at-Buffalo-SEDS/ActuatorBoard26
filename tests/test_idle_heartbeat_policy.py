@@ -42,6 +42,9 @@ static uint32_t thread_comm_get_flight_state(void) {
 static uint8_t retained_launch;
 static uint8_t board_launch_latch_is_set(void) { return retained_launch; }
 
+/* This isolated state-table has no accepted Launch object. Actual receipt
+ * invalidation is exercised by the linked real thread_comm owner tests. */
+static void launch_revoke_locked(void) {}
 static void board_abort_latch_set(void) { aborted=1; }
 typedef unsigned TX_MUTEX;
 #define TX_SUCCESS 0U

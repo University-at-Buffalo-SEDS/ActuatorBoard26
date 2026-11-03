@@ -17,6 +17,16 @@ typedef struct {
     uint64_t timestamp_ms;
 } thread_comm_msg_t;
 
+/* Application-local receipt, never a SEDSnet wire packet ID. */
+#define THREAD_COMM_LAUNCH_SENDER_MAX 32U
+typedef struct { uint64_t source_utc; uint32_t epoch, serial; } thread_comm_launch_owner_t;
+uint8_t thread_comm_launch_continuity(void);
+uint8_t thread_comm_launch_original_accepted(uint64_t source,const char*sender,uint32_t sender_len);
+uint8_t thread_comm_launch_claim(uint64_t source,uint32_t epoch,thread_comm_launch_owner_t*out);
+uint8_t thread_comm_launch_begin_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context);
+uint8_t thread_comm_launch_effect_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context);
+void thread_comm_launch_complete_owned(const thread_comm_launch_owner_t*owner);
+UINT thread_comm_admit_network_launch_original(thread_comm_msg_t msg,const char*sender,uint32_t sender_len);
 typedef enum {
     ACTUATOR_FLIGHT_STATE_STARTUP = 0,
     ACTUATOR_FLIGHT_STATE_IDLE = 1,
