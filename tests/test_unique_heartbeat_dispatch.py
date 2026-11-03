@@ -15,8 +15,12 @@ typedef int SedsResult;
 #define SEDS_OK 0
 #define SEDS_BAD_ARG -2
 #define SEDS_DT_HEARTBEAT 106U
+#define SEDS_DT_AB_FILL_DRIVE_SETTINGS 257107486U
 #define TX_SUCCESS 0
 typedef struct {uint32_t ty;const char*sender;size_t sender_len;const void*payload;size_t payload_len;} SedsPacketView;
+static struct{void*r;}g_router={(void*)1};
+static unsigned settings_calls;
+static SedsResult fill_settings_handle(void*r,const SedsPacketView*p){assert(r==(void*)1&&p->ty==SEDS_DT_AB_FILL_DRIVE_SETTINGS);settings_calls++;return 19;}
 static uint64_t now,last;
 static uint32_t aborted,commands,g_heartbeat_handler_count,g_heartbeat_handler_error_count;
 static SedsResult sim_probe_heartbeat_handler(const SedsPacketView*p,void*u){(void)p;(void)u;return SEDS_OK;}
@@ -33,6 +37,7 @@ for(unsigned i=0;i<4;i++){p.sender=other[i];p.sender_len=sizes[i];assert(control
 p.sender="@addr:3561204631";p.sender_len=16;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);
 aborted=1;now=12000;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);aborted=0;
 p.ty=7;assert(control_packet_handler(&p,NULL)==17&&commands==1);assert(control_packet_handler(NULL,NULL)==SEDS_BAD_ARG&&commands==2);
+p.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS;assert(control_packet_handler(&p,NULL)==19&&settings_calls==1&&commands==2);
 return 0;}
 '''
   with tempfile.TemporaryDirectory()as d:

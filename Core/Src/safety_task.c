@@ -1,12 +1,15 @@
+#include "telemetry_event_clock.h"
 #include "board_watchdog.h"
 #include "AB-Threads.h"
 #include "main.h"
 #include "board_temperature.h"
+#include "igniter_sense.h"
+#include "igniter_sense_math.h"
 #include "thread_comm.h"
 #include "tx_api.h"
 #include "safety_diagnostics.h"
 
-volatile safety_abort_diagnostic_t g_safety_first_abort;
+
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -118,6 +121,8 @@ static volatile uint32_t safety_adc_start_hal_error;
 static volatile HAL_DMA_StateTypeDef safety_adc_start_dma_state;
 static volatile uint32_t safety_adc_start_dma_error;
 static volatile bool safety_adc_started;
+static volatile bool safety_adc_needs_quiesce;
+static uint32_t safety_adc_started_ms;
 static uint64_t safety_heartbeat_missing_since_ms;
 
 static uint64_t safety_now_ms(void)
@@ -125,21 +130,71 @@ static uint64_t safety_now_ms(void)
     return ((uint64_t)tx_time_get() * 1000ULL) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
 }
 
+/* Task owner only. No global IRQ mask surrounds HAL stop or semaphore work.
+ * No ADC12 reset is allowed: ADC2 remains independently owned. */
+static bool safety_adc_quiesce(void)
+{
+    const uint32_t saved = __get_PRIMASK();
+    __disable_irq();
+    safety_adc_started = false;
+    safety_adc_needs_quiesce = true;
+    igniter_sense_fault();
+    const uint32_t errors = safety_adc_start_error_count;
+    __set_PRIMASK(saved);
+    if (hadc1.DMA_Handle == NULL || hadc1.DMA_Handle->Instance != DMA1_Channel1) return false;
+    HAL_NVIC_DisableIRQ(DMA1_Channel1_IRQn);
+    __HAL_DMA_DISABLE(hadc1.DMA_Handle);
+    __HAL_DMA_DISABLE_IT(hadc1.DMA_Handle, DMA_IT_TC | DMA_IT_HT | DMA_IT_TE);
+    __DSB();
+    /* G4 HAL ADC_ConversionStop is bounded by ADC_STOP_CONVERSION_TIMEOUT=5ms.
+     * The independent system tick remains enabled during that wait. */
+    const HAL_StatusTypeDef stopped = HAL_ADC_Stop_DMA(&hadc1);
+    __DSB();
+    if (stopped != HAL_OK ||
+        (hadc1.Instance->CR & (ADC_CR_ADSTART | ADC_CR_JADSTART)) != 0U ||
+        (hadc1.DMA_Handle->Instance->CCR & DMA_CCR_EN) != 0U) return false;
+    __HAL_DMA_CLEAR_FLAG(hadc1.DMA_Handle, __HAL_DMA_GET_GI_FLAG_INDEX(hadc1.DMA_Handle));
+    HAL_NVIC_ClearPendingIRQ(DMA1_Channel1_IRQn);
+    __DSB();
+    bool drained = false;
+    for (unsigned n = 0U; n < 8U; ++n) {
+        const UINT status = tx_semaphore_get(&safety_adc_dma_sem, TX_NO_WAIT);
+        if (status == TX_NO_INSTANCE) { drained = true; break; }
+        if (status != TX_SUCCESS) return false;
+    }
+    if (!drained) return false;
+    const uint32_t final_irq = __get_PRIMASK();
+    __disable_irq();
+    if (safety_adc_start_error_count != errors) {
+        __set_PRIMASK(final_irq);
+        return false;
+    }
+    safety_adc_needs_quiesce = false;
+    HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+    __set_PRIMASK(final_irq);
+    return true;
+}
+
 static UINT safety_adc_start(void)
 {
     safety_adc_start_step = 1U;
-
-    if (safety_adc_started)
-    {
-        return TX_SUCCESS;
-    }
-
-    if (hadc1.DMA_Handle == NULL)
-    {
+    if (hadc1.DMA_Handle == NULL || hadc1.DMA_Handle->Instance != DMA1_Channel1) {
         safety_adc_start_step = 2U;
+        safety_adc_started = false;
+        safety_adc_needs_quiesce = true;
+        igniter_sense_fault();
         safety_adc_start_error_count++;
         return TX_NOT_DONE;
     }
+
+
+    if (safety_adc_started &&
+        (uint32_t)(HAL_GetTick() - safety_adc_started_ms) > IGNITER_SENSE_SAMPLE_MAX_AGE_MS) {
+        safety_adc_needs_quiesce = true;
+        igniter_sense_fault();
+    }
+    if (safety_adc_needs_quiesce && !safety_adc_quiesce()) return TX_NOT_DONE;
+    if (safety_adc_started) return TX_SUCCESS;
 
     safety_adc_start_hal_state = HAL_ADC_GetState(&hadc1);
     safety_adc_start_hal_error = HAL_ADC_GetError(&hadc1);
@@ -150,11 +205,13 @@ static UINT safety_adc_start(void)
         (hadc1.DMA_Handle->State == HAL_DMA_STATE_BUSY))
     {
         safety_adc_start_step = 3U;
-        safety_adc_started = true;
-        return TX_SUCCESS;
+        /* An unexplained busy DMA is not this request's completed sample. */
+        safety_adc_needs_quiesce = true;
+        if (!safety_adc_quiesce()) return TX_NOT_DONE;
     }
 
     safety_adc_start_step = 4U;
+    safety_adc_started_ms = HAL_GetTick();
     safety_adc_started = true;
     safety_adc_start_status = HAL_ADC_Start_DMA(&hadc1,
                                                 (uint32_t *)safety_adc_dma_buffer,
@@ -168,6 +225,8 @@ static UINT safety_adc_start(void)
     if (safety_adc_start_status != HAL_OK)
     {
         safety_adc_started = false;
+        safety_adc_needs_quiesce = true;
+        igniter_sense_fault();
         safety_adc_start_error_count++;
         return TX_NOT_DONE;
     }
@@ -261,10 +320,8 @@ static void safety_check_heartbeat(void)
             ((now_ms - last_heartbeat_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS))
         {
             safety_heartbeat_timeout_count++;
-            const uint32_t abort_before = thread_comm_get_abort();
-            if (thread_comm_request_heartbeat_abort() != 0U) {
-                safety_record_first_abort(SAFETY_ABORT_HEARTBEAT, now_ms,
-                                          last_heartbeat_ms, flight_state, 0U, abort_before);
+            const uint64_t origin_utc = telemetry_event_clock_snapshot();
+            if (thread_comm_request_local_abort(SAFETY_ABORT_HEARTBEAT, now_ms, last_heartbeat_ms, flight_state, 0U, origin_utc, 1U)) {
                 /* Retained Abort is consumed by the control owner; do not
                  * mutate a later recovered sequence from this producer. */
             }
@@ -281,10 +338,8 @@ static void safety_check_heartbeat(void)
     if ((now_ms - safety_heartbeat_missing_since_ms) >= SAFETY_HEARTBEAT_TIMEOUT_MS)
     {
         safety_heartbeat_timeout_count++;
-        const uint32_t abort_before = thread_comm_get_abort();
-        if (thread_comm_request_heartbeat_abort() != 0U) {
-            safety_record_first_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms,
-                                      last_heartbeat_ms, flight_state, 0U, abort_before);
+        const uint64_t origin_utc = telemetry_event_clock_snapshot();
+        if (thread_comm_request_local_abort(SAFETY_ABORT_INITIAL_HEARTBEAT, now_ms, last_heartbeat_ms, flight_state, 0U, origin_utc, 1U)) {
             /* Control owner observes the retained Abort and owns safe outputs. */
         }
     }
@@ -325,24 +380,24 @@ void safety_task_entry(ULONG initial_input)
     {
         board_watchdog_progress(BOARD_WATCHDOG_SAFETY);
         safety_check_heartbeat();
-        board_temperature_poll();
+        /* Do not inject a temperature/reference conversion while recovery
+         * or an outstanding regular scan still owns the ADC. */
+        if (!safety_adc_needs_quiesce && !safety_adc_started)
+            board_temperature_poll();
 
-        if (thread_comm_abort_allowed() == 0U)
-        {
-            tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
-            continue;
-        }
-
+        /* Read-only acquisition continues after Launch/Abort. All existing
+         * safety evaluation and failure Abort paths retain their own gate. */
         if (safety_adc_start() != TX_SUCCESS)
         {
+            if (thread_comm_abort_allowed() == 0U) {
+                tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
+                continue;
+            }
             const uint64_t failure_ms = safety_now_ms();
             const uint64_t heartbeat_ms = thread_comm_get_groundstation_heartbeat_ms();
             const uint8_t flight_state = thread_comm_get_flight_state();
-            const uint32_t abort_before = thread_comm_get_abort();
-            if (thread_comm_request_automatic_abort() != 0U) {
-                safety_record_first_abort(SAFETY_ABORT_ADC_START, failure_ms,
-                                          heartbeat_ms, flight_state,
-                                          safety_adc_start_step, abort_before);
+            const uint64_t origin_utc = telemetry_event_clock_snapshot();
+            if (thread_comm_request_local_abort(SAFETY_ABORT_ADC_START, failure_ms, heartbeat_ms, flight_state, safety_adc_start_step, origin_utc, 0U)) {
                 /* Retained Abort is consumed by the control owner; do not
                  * mutate a later recovered sequence from this producer. */
             }
@@ -355,8 +410,10 @@ void safety_task_entry(ULONG initial_input)
             safety_adc_sample_t sample;
             if (safety_adc_take_latest(&sample))
             {
-                safety_process_adc_sample(&sample);
-                safety_adc_processed_count++;
+                if (thread_comm_abort_allowed() != 0U) {
+                    safety_process_adc_sample(&sample);
+                    safety_adc_processed_count++;
+                }
             }
         }
         tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
@@ -370,9 +427,20 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
-    if (hadc->Instance == ADC1)
+    if (hadc == &hadc1 && hadc->Instance == ADC1)
     {
-        safety_adc_publish_frame(&safety_adc_dma_buffer[0]);
+        /* Only a completed transfer into this owner's existing DMA buffer
+         * can publish a measurement. Late/unowned callbacks change no clock. */
+        if (safety_adc_started && !safety_adc_needs_quiesce && hadc->DMA_Handle != NULL &&
+            hadc->DMA_Handle->Instance == DMA1_Channel1 &&
+            __HAL_DMA_GET_COUNTER(hadc->DMA_Handle) == 0U &&
+            (uintptr_t)hadc->DMA_Handle->Instance->CMAR == (uintptr_t)safety_adc_dma_buffer) {
+            igniter_sense_capture(safety_adc_dma_buffer[2], HAL_GetTick());
+            safety_adc_publish_frame(&safety_adc_dma_buffer[0]);
+        } else {
+            igniter_sense_fault();
+            safety_adc_needs_quiesce = true;
+        }
         safety_adc_started = false;
     }
 }
@@ -382,7 +450,9 @@ void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
     if (hadc->Instance == ADC1)
     {
         safety_adc_started = false;
+        safety_adc_needs_quiesce = true;
         safety_adc_start_error_count++;
+        igniter_sense_fault();
     }
 }
 

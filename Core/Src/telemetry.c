@@ -1,3 +1,4 @@
+#include "telemetry_event_clock.h"
 
 #ifdef TELEMETRY_ENABLED
 extern int telemetry_router_enter(void);
@@ -6,6 +7,7 @@ extern int telemetry_router_leave(void);
 #include "ground_heartbeat_owner.h"
 #include "can_tx_queue.h"
 #include "board_health.h"
+#include "igniter_sense.h"
 // telemetry.c
 #include "telemetry.h"
 #include "flight_state_cache.h"
@@ -32,6 +34,7 @@ extern int telemetry_router_leave(void);
 #include "stm32g4xx_hal_gpio.h"
 #include "thread_comm.h"
 #include "board_recovery_transport.h"
+#include "fill_settings.h"
 
 #ifndef TELEMETRY_ENABLED
 static void print_data_no_telem(void *data, size_t len)
@@ -244,7 +247,9 @@ static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *m
 
 SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
 {
-  /* Explicit recovery installs a persisted replay floor before clearing abort. */
+  /* Publish storage-validated cutoff before state-lock admission; no NVM
+   * getter runs under that lock. Refusal/IO is not a stale-command receipt. */
+  if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
   if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_OK;
 
   (void)user;
@@ -278,7 +283,8 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
     if (!(command == CMD_NITROGEN_OPEN || command == CMD_NITROUS_OPEN ||
           command == CMD_NITROGEN_CLOSE || command == CMD_NITROUS_CLOSE)) return SEDS_BAD_ARG;
     const thread_comm_msg_t automatic_msg = {.cmd = command, .timestamp_ms = pkt->timestamp};
-    return thread_comm_admit_automatic(automatic_msg) == TX_SUCCESS ? SEDS_OK : SEDS_ERR;
+    const UINT admitted=thread_comm_admit_network_automatic(automatic_msg,pkt->timestamp);
+    return admitted==TX_SUCCESS || admitted==THREAD_COMM_STALE_TIMESTAMP ? SEDS_OK : SEDS_ERR;
   }
 
   if (is_replayed_igniter_sequence_command(pkt, cmd_u8))
@@ -294,8 +300,10 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   /* A full command queue must not block the telemetry worker indefinitely.
    * Blocking here prevents CAN draining, discovery, time sync, and all future
    * commands, which presents as the board becoming unresponsive over time. */
-  if ((cmd_u8 == CMD_IGNITER_SEQUENCE ? thread_comm_admit_launch(msg) :
-       thread_comm_send(msg, TX_NO_WAIT)) != TX_SUCCESS)
+  const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? thread_comm_admit_network_launch(msg) :
+      thread_comm_admit_network(msg,pkt->timestamp);
+  if (admitted==THREAD_COMM_STALE_TIMESTAMP) return SEDS_OK;
+  if (admitted != TX_SUCCESS)
   {
     g_command_queue_drop_count++;
     return SEDS_ERR;
@@ -317,6 +325,14 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
     return SEDS_OK;
   }
 
+  /* Exact application marker only. Unrecognized/unauthorized inputs retain
+   * the existing conservative manual Stop behavior. No SDK/clock under owner. */
+  static const char manual[]="SEDS_MANUAL_ABORT_V1:";
+  if(pkt&&pkt->payload&&pkt->payload_len==sizeof manual&&
+     !memcmp(pkt->payload,manual,sizeof manual-1U)&&pkt->payload[sizeof manual-1U]=='K'&&
+     board_recovery_manual_stop_source_allowed(g_router.r,pkt)){
+    (void)thread_comm_request_manual_abort_original_utc(pkt->timestamp);return SEDS_OK;
+  }
   (void)pkt;
   (void)user;
   (void)thread_comm_request_manual_abort();
@@ -325,6 +341,7 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
 
 SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
 {
+  if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
   /* Explicit recovery installs a persisted replay floor before clearing abort. */
   if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_HANDLER_ERROR;
 
@@ -352,7 +369,7 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   g_flight_state_handler_count++;
   g_last_flight_state_packet = flight_state;
 
-  if (thread_comm_apply_managed_flight_state(flight_state) != TX_SUCCESS)
+  if (thread_comm_apply_network_flight_state(flight_state,pkt->timestamp) != TX_SUCCESS)
   {
     g_flight_state_handler_error_count++;
     return SEDS_HANDLER_ERROR;
@@ -407,6 +424,8 @@ static SedsResult Board_Recovery_handler(const SedsPacketView *packet, void *use
 static SedsResult control_packet_handler(const SedsPacketView *packet, void *user)
 {
 
+  if(packet!=NULL&&packet->ty==SEDS_DT_AB_FILL_DRIVE_SETTINGS)
+    return fill_settings_handle(g_router.r,packet);
   if (packet != NULL && packet->ty == SEDS_DT_HEARTBEAT)
     return Heartbeat_handler(packet, user);
   return Valve_Command_handler(packet, user);
@@ -673,6 +692,8 @@ static void telemetry_update_network_health(SedsRouter *router)
   {
     g_telemetry_timesync_valid = 1U;
   }
+  /* Keep an observed sample only; safety never enters the SDK or extrapolates. */
+  telemetry_event_clock_observe(network_time_ms, (uint32_t)tx_time_get());
   if (g_telemetry_discovery_seen != 0U &&
       g_telemetry_timesync_valid != 0U)
   {
@@ -743,7 +764,10 @@ SedsResult telemetry_announce_discovery(void)
 static SedsResult telemetry_poll_discovery_locked(void)
 {
 #ifdef TELEMETRY_ENABLED
-  if (g_router.r) board_health_poll(g_router.r);
+  if (g_router.r) {
+    board_health_poll(g_router.r);
+    igniter_sense_poll(g_router.r);
+  }
 #endif
 
 #ifndef TELEMETRY_ENABLED
@@ -1082,7 +1106,7 @@ SedsResult log_telemetry_asynchronous(SedsDataType data_type, const void *data,
 }
 
 
-static SedsResult log_telemetry_string_asynchronous_locked(SedsDataType data_type, const char *str)
+static SedsResult log_telemetry_string_asynchronous_locked(SedsDataType data_type, const char *str, const uint64_t *original_utc)
 {
 #ifdef TELEMETRY_ENABLED
   if (!str)
@@ -1095,26 +1119,38 @@ static SedsResult log_telemetry_string_asynchronous_locked(SedsDataType data_typ
     return SEDS_ERR;
   }
 
-  return seds_router_log_string_ex(g_router.r, data_type, str, strlen(str), NULL, 1);
+  return seds_router_log_string_ex(g_router.r, data_type, str, strlen(str), original_utc, 1);
 #else
   (void)data_type;
   (void)str;
+  (void)original_utc;
   return SEDS_OK;
 #endif
 }
 
-SedsResult log_telemetry_string_asynchronous(SedsDataType data_type, const char *str)
+static SedsResult telemetry_log_string_original(SedsDataType data_type, const char *str, const uint64_t *original_utc)
 {
 #ifdef TELEMETRY_ENABLED
   if (!telemetry_router_enter()) return SEDS_BAD_ARG;
 #endif
-  SedsResult result = log_telemetry_string_asynchronous_locked(data_type, str);
+  SedsResult result = log_telemetry_string_asynchronous_locked(data_type, str, original_utc);
 #ifdef TELEMETRY_ENABLED
   if (!telemetry_router_leave() && result == SEDS_OK) return SEDS_ERR;
 #endif
   return result;
 }
 
+
+SedsResult log_telemetry_string_asynchronous(SedsDataType type, const char *text)
+{
+  return telemetry_log_string_original(type, text, NULL);
+}
+SedsResult log_telemetry_string_asynchronous_at(SedsDataType type, const char *text,
+                                               uint64_t original_utc)
+{
+  /* A pointer to zero is intentional unknown origin, never SDK "now". */
+  return telemetry_log_string_original(type, text, &original_utc);
+}
 
 static SedsResult dispatch_tx_queue_locked(void)
 {

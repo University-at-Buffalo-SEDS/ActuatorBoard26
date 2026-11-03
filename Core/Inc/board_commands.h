@@ -9,4 +9,5 @@ enum actuator_commands {
     CMD_NITROGEN_CLOSE = 12,
     CMD_NITROUS_CLOSE = 13,
     CMD_IGNITER_SEQUENCE = 14,
+    CMD_EXTEND_PLUMBING = 15,
 };

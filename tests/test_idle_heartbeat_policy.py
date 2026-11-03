@@ -32,20 +32,24 @@ typedef struct { uint32_t value; } safety_adc_sample_t;
 static safety_adc_sample_t safety_adc_latest_sample;
 #define SAFETY_HEARTBEAT_TIMEOUT_MS 5000ULL
 #define SAFETY_ADC_MISMATCH_LIMIT 3U
+static uint64_t telemetry_event_clock_snapshot(void){return 9000;}
 static uint64_t safety_now_ms(void) { return now_ms; }
 static uint64_t thread_comm_get_groundstation_heartbeat_ms(void) { return heartbeat; }
-static uint32_t thread_comm_get_abort(void) { return aborted; }
 static uint32_t thread_comm_get_flight_state(void) {
     state_reads++;
     return change_after_snapshot && state_reads > 1 ? state_after_snapshot : state;
 }
 static uint8_t retained_launch;
 static uint8_t board_launch_latch_is_set(void) { return retained_launch; }
+
 static void board_abort_latch_set(void) { aborted=1; }
 typedef unsigned TX_MUTEX;
 #define TX_SUCCESS 0U
 #define TX_WAIT_FOREVER 0xffffffffU
 static unsigned g_thread_comm_state_mutex,g_thread_comm_initialized=1;
+typedef struct {uint64_t original_utc;uint32_t reason,epoch,lease;} thread_comm_safety_report_t;
+static thread_comm_safety_report_t g_safety_report;
+static uint8_t g_safety_report_closing,g_command_admission_fault;
 static uint8_t g_recovery_pending;
 static uint32_t g_thread_comm_recovery_epoch=1;
 #define g_thread_comm_abort aborted
@@ -55,7 +59,7 @@ static unsigned tx_mutex_put(TX_MUTEX*m){(void)m;return TX_SUCCESS;}
 void main_task_force_outputs_safe_off(void) { calls++; }
 static uint32_t safety_sample_mismatch_mask(const safety_adc_sample_t *sample) { return sample->value; }
 '''
-        code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n' + function(shared, 'thread_comm_request_heartbeat_abort') + '\n'
+        code += states + '\n' + function(shared, 'thread_comm_latch_abort_locked') + '\n' + function(shared, 'thread_comm_abort_allowed') + '\n' + function(shared, 'thread_comm_request_automatic_abort') + '\n' + function(shared, 'thread_comm_request_heartbeat_abort') + '\n' + function(shared, 'thread_comm_request_local_abort') + '\n'
         code += function(safety, 'safety_check_heartbeat') + '\n'
         code += function(safety, 'safety_process_adc_sample') + r'''
 static void reset(void) {

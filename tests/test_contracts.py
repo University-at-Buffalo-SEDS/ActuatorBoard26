@@ -79,7 +79,8 @@ class FirmwareContracts(unittest.TestCase):
         self.assertIn("GIT_TAG ${SEDSNET_GIT_REF}", cmake)
         self.assertIn('set(SEDSNET_GIT_REF "main" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
-        self.assertIn("GIT_TAG v1.0.0", cmake)
+        self.assertIn("GIT_TAG e2eea7d94245168dc63d31e160f4cb7bdc7688c3", cmake)
+        self.assertIn("launchcore_require_strict_api", cmake)
 
     def test_telemetry_callback_never_waits_forever_on_full_command_queue(self):
         telemetry = (ROOT / "Core/Src/telemetry.c").read_text()
@@ -87,7 +88,9 @@ class FirmwareContracts(unittest.TestCase):
             r"SedsResult Valve_Command_handler.*?\n}\n", telemetry, re.DOTALL
         )
         self.assertIsNotNone(match)
-        self.assertIn("thread_comm_send(msg, TX_NO_WAIT)", match.group(0))
+        self.assertIn("thread_comm_admit_network(msg,pkt->timestamp)", match.group(0))
+        admission = (ROOT / "Core/Src/thread_comm.c").read_text()
+        self.assertIn("else result = thread_comm_send_owned_nowait(msg);", admission)
         self.assertNotIn("TX_WAIT_FOREVER", match.group(0))
 
     def test_debug_firmware_remains_size_optimized(self):

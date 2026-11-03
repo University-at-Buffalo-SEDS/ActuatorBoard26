@@ -1,5 +1,6 @@
 #include "board_temperature.h"
 #include "board_temperature_math.h"
+#include "igniter_sense_math.h"
 #include "main.h"
 #include <stdbool.h>
 #include "stm32g4xx_ll_adc.h"
@@ -8,6 +9,8 @@ static uint32_t sample_ms;
 static int16_t sample_centi;
 static bool valid;
 static bool attempted;
+static uint32_t reference_mv, reference_sample_ms;
+static bool reference_ok;
 static bool due(uint32_t now)
 {
   if (attempted && (uint32_t)(now - last_attempt) < 5000U) return false;
@@ -19,7 +22,11 @@ static void publish(uint32_t raw, uint32_t ref, uint32_t now)
   bool ok = board_temperature_convert(raw, ref, *VREFINT_CAL_ADDR,
       *TEMPSENSOR_CAL1_ADDR, *TEMPSENSOR_CAL2_ADDR,
       TEMPSENSOR_CAL1_TEMP, TEMPSENSOR_CAL2_TEMP, &c);
+  uint32_t mv = 0U;
+  const bool ref_ok = igniter_sense_vdda_mv(ref, *VREFINT_CAL_ADDR, VREFINT_CAL_VREF, &mv);
   uint32_t irq = __get_PRIMASK(); __disable_irq();
+  if (ref_ok) { reference_mv = mv; reference_sample_ms = now; }
+  reference_ok = ref_ok;
   if (ok) { sample_centi = c; sample_ms = now; }
   valid = ok;
   __set_PRIMASK(irq);
@@ -31,6 +38,18 @@ uint32_t board_temperature_health_flags(void)
   uint32_t flags = valid ? board_temperature_pack(sample_centi, now - sample_ms) : 0U;
   __set_PRIMASK(irq);
   return flags;
+}
+
+bool board_temperature_reference_mv(uint32_t *millivolts, uint32_t *age_ms)
+{
+  if (!millivolts || !age_ms) return false;
+  const uint32_t now = HAL_GetTick();
+  const uint32_t irq = __get_PRIMASK(); __disable_irq();
+  *millivolts = reference_mv;
+  *age_ms = (uint32_t)(now - reference_sample_ms);
+  const bool ok = reference_ok && *age_ms <= IGNITER_SENSE_REFERENCE_MAX_AGE_MS;
+  __set_PRIMASK(irq);
+  return ok;
 }
 
 static bool wait_bits(volatile uint32_t *reg, uint32_t mask, bool set)

@@ -1,9 +1,22 @@
 #include "thread_comm.h"
 #include <assert.h>
+#include <stdbool.h>
+/* Queue/state-only unit: storage is already healthy, no commissioning is in
+ * flight, and legacy/manual Stop is never retired. Actual journal, pending,
+ * failure and retirement behavior is covered by the strict recovery fixtures. */
+bool persistent_store_controls_ready(void) { return true; }
+bool persistent_store_recovery_ready(void) { return true; }
+bool persistent_store_bootstrap_pending(void) { return false; }
+void persistent_store_hold_bootstrap(void) { assert(!"Unexpected storage hold in healthy queue unit"); }
+bool persistent_store_publish_bootstrap_complete(void) { assert(!"No bootstrap publish in queue unit"); return false; }
+uint8_t board_recovery_manual_time_retired(uint64_t source) { (void)source; return 0U; }
+
 static uint8_t retained_abort, retained_launch;
 void board_launch_latch_set(void) { retained_launch=1U; }
 uint8_t board_launch_latch_set_verified(void) { board_launch_latch_set(); return 1U; }
 uint8_t board_launch_latch_is_set(void) { return retained_launch; }
+uint8_t board_launch_latch_was_verified(void){ return retained_launch; }
+
 void board_abort_latch_set(void) { retained_abort=1U; }
 uint8_t board_abort_latch_prepare_recovery(void) { retained_abort=1U; return 1U; }
 uint8_t board_abort_latch_clear_for_recovery(void) { retained_abort=retained_launch=0U; return 1U; }

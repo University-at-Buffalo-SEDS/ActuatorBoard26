@@ -107,6 +107,23 @@ void stepperInit(stepper_t *hw)
     hw->direction   = STEP_CW;
 }
 
+int stepperInitAsleep(stepper_t *hw)
+{
+    if (timer_move_active || (hw->sleep_port->ODR & hw->sleep_pin) != 0U) {
+        return STEP_BUSY;
+    }
+    dwt_init();
+    configureStepPinAsGpio(hw);
+    HAL_GPIO_WritePin(hw->dir_port, hw->dir_pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(hw->reset_port, hw->reset_pin, GPIO_PIN_RESET);
+    delay_us(10);
+    HAL_GPIO_WritePin(hw->reset_port, hw->reset_pin, GPIO_PIN_SET);
+    /* Keep the already-low nSLEEP unchanged; no winding drive or wake delay. */
+    hw->is_sleeping = true;
+    hw->direction = STEP_CW;
+    return STEP_OK;
+}
+
 void stepperSetDir(stepper_t *hw, uint8_t dir)
 {
     hw->direction = dir;
@@ -156,7 +173,7 @@ int stepperStartMoveTimer(stepper_t *hw, uint32_t steps, uint32_t period_us)
         return STEP_SLEEPING;
     }
 
-    if ((steps == 0U) || (period_us <= STEP_PULSE_US)) {
+    if ((steps == 0U) || (period_us < (STEP_PULSE_US + 2U)) || (period_us > 65536U)) {
         return STEP_FAULT;
     }
 
@@ -232,12 +249,90 @@ void stepperSleep(stepper_t *hw)
     hw->is_sleeping = true;
 }
 
+/* Called only by the explicit ordinary recovery main owner. TIM1 channel3N
+ * is dedicated to this stepper. A different recorded timer owner is never
+ * disturbed; no serial, motion identity or monotonic counter is reset. */
+static bool recoveryHardwareValid(const stepper_t *hw)
+{
+    return hw != NULL && htim1.Instance != NULL &&
+        hw->step_port != NULL && hw->step_pin != 0U &&
+        hw->sleep_port != NULL && hw->sleep_pin != 0U &&
+        hw->dir_port != NULL && hw->dir_pin != 0U &&
+        hw->reset_port != NULL && hw->reset_pin != 0U;
+}
+
+bool stepperIsStoppedAsleep(const stepper_t *hw)
+{
+    return recoveryHardwareValid(hw) && !timer_move_active &&
+        timer_stepper == NULL && timer_steps_remaining == 0U && timer_period_us == 0U &&
+        hw->is_sleeping &&
+        (hw->sleep_port->ODR & hw->sleep_pin) == 0U &&
+        (hw->step_port->ODR & hw->step_pin) == 0U &&
+        (htim1.Instance->CR1 & TIM_CR1_CEN) == 0U &&
+        (htim1.Instance->DIER & TIM_DIER_UIE) == 0U &&
+        (htim1.Instance->CCER & TIM_CCER_CC3NE) == 0U &&
+        (htim1.Instance->BDTR & TIM_BDTR_MOE) == 0U;
+}
+
+int stepperRecoverAsleep(stepper_t *hw)
+{
+    if (!recoveryHardwareValid(hw)) return STEP_FAULT;
+    if (timer_stepper != NULL && timer_stepper != hw) return STEP_BUSY;
+    /* Inhibit winding drive first, even if the previous HAL start left
+     * partially configured peripheral state without a software timer owner. */
+    HAL_GPIO_WritePin(hw->sleep_port, hw->sleep_pin, GPIO_PIN_RESET);
+    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
+    timer_move_active = false;
+    const HAL_StatusTypeDef stopped = HAL_TIMEx_PWMN_Stop(&htim1, STEPPER_PWM_CHANNEL);
+    CLEAR_BIT(htim1.Instance->CCER, TIM_CCER_CC3NE);
+    CLEAR_BIT(htim1.Instance->CR1, TIM_CR1_CEN);
+    CLEAR_BIT(htim1.Instance->BDTR, TIM_BDTR_MOE);
+    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
+    configureStepPinAsGpio(hw);
+    timer_steps_remaining = 0U;
+    timer_period_us = 0U;
+    timer_stepper = NULL;
+    hw->is_sleeping = (hw->sleep_port->ODR & hw->sleep_pin) == 0U;
+    /* A prior boot-asleep failure may have preceded DWT setup. Enable it
+     * without resetting CYCCNT; the next fresh direction setup uses deltas. */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    return stopped == HAL_OK && stepperIsStoppedAsleep(hw) ? STEP_OK : STEP_FAULT;
+}
+
+/* Both task cancellation and timer ISR only stop; no ISR takes an RTOS lock.
+ * Inhibit winding drive FIRST, then retire timer owner before pending IRQ can
+ * observe it. The IRQ never enables outputs, including when already entered. */
+void stepperStopAsleepImmediate(stepper_t *hw)
+{
+    if(hw==NULL)return;
+    HAL_GPIO_WritePin(hw->sleep_port,hw->sleep_pin,GPIO_PIN_RESET);
+    if(htim1.Instance!=NULL){
+        CLEAR_BIT(htim1.Instance->DIER,TIM_DIER_UIE);
+        timer_move_active=false;
+        __DMB();
+        CLEAR_BIT(htim1.Instance->CCER,TIM_CCER_CC3NE);
+        CLEAR_BIT(htim1.Instance->CR1,TIM_CR1_CEN);
+        CLEAR_BIT(htim1.Instance->BDTR,TIM_BDTR_MOE);
+        __HAL_TIM_CLEAR_FLAG(&htim1,TIM_FLAG_UPDATE);
+    }else timer_move_active=false;
+    timer_steps_remaining=0U;timer_period_us=0U;timer_stepper=NULL;
+    configureStepPinAsGpio(hw);hw->is_sleeping=true;
+}
+int stepperWakeBegin(stepper_t *hw)
+{
+    if(hw==NULL)return STEP_FAULT;
+    HAL_GPIO_WritePin(hw->sleep_port,hw->sleep_pin,GPIO_PIN_SET);
+    hw->is_sleeping=false;return STEP_OK;
+}
+int stepperWakeWait(stepper_t *hw)
+{
+    HAL_Delay(SLEEP_WAKE_MS);
+    return hw!=NULL&&!hw->is_sleeping&&(hw->sleep_port->ODR&hw->sleep_pin)!=0U?STEP_OK:STEP_SLEEPING;
+}
 int stepperWake(stepper_t *hw)
 {
-    HAL_GPIO_WritePin(hw->sleep_port, hw->sleep_pin, GPIO_PIN_SET);
-    HAL_Delay(SLEEP_WAKE_MS);
-    hw->is_sleeping = false;
-    return STEP_OK;
+    int status=stepperWakeBegin(hw);return status==STEP_OK?stepperWakeWait(hw):status;
 }
 
 void stepperReset(stepper_t *hw)

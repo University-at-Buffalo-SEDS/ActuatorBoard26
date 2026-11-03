@@ -1,3 +1,4 @@
+import re
 """SDK-free optional-feature contract; full embedded smoke is explicitly opt-in."""
 import dataclasses
 import importlib.util
@@ -18,6 +19,18 @@ def cached_source(name, env):
     explicit = os.environ.get(env)
     if explicit and (Path(explicit) / "CMakeLists.txt").is_file():
         return Path(explicit)
+    for cache in sorted(ROOT.glob("build/*/CMakeCache.txt")):
+        values = dict(re.findall(r"(?m)^([A-Za-z_][A-Za-z0-9_]*):[^=\r\n]*=([^\r\n]*)$", cache.read_text()))
+        candidates = []
+        override = values.get("FETCHCONTENT_SOURCE_DIR_" + name.upper())
+        if override:
+            candidates.append(Path(override))
+        base = values.get("FETCHCONTENT_BASE_DIR")
+        if base:
+            candidates.append(Path(base) / (name + "-src"))
+        for candidate in candidates:
+            if (candidate / "CMakeLists.txt").is_file():
+                return candidate
     return next((p for p in ROOT.glob(f"build/*/_deps/{name}-src")
                  if (p / "CMakeLists.txt").is_file()), None)
 

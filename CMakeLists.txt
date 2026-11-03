@@ -48,7 +48,7 @@ endif()
 FetchContent_Declare(
     sedslaunchcore
     GIT_REPOSITORY https://github.com/University-at-Buffalo-SEDS/SEDSLaunchCore.git
-    GIT_TAG v1.0.0
+    GIT_TAG e2eea7d94245168dc63d31e160f4cb7bdc7688c3
     GIT_SHALLOW FALSE
 )
 FetchContent_GetProperties(sedslaunchcore)
@@ -56,6 +56,8 @@ if(NOT sedslaunchcore_POPULATED)
     FetchContent_Populate(sedslaunchcore)
 endif()
 
+include(cmake/launchcore_strict_api.cmake)
+launchcore_require_strict_api("${sedslaunchcore_SOURCE_DIR}")
 include("${sedslaunchcore_SOURCE_DIR}/cmake/launchcore_stm32.cmake")
 launchcore_generate_linker_scripts(
     BSP_CONFIG "${CMAKE_SOURCE_DIR}/Bootloader/board_config.h"
@@ -99,8 +101,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_tx_queue.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c>"
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c>"
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_event_clock.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/thread_comm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/fill_motion.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/fill_motion_status.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/fill_bridge.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/fill_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/main_task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/safety_task.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/ota_stream.c>"
@@ -341,12 +348,15 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BOARD_WATCHDOG_ENABLE=$
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_abort_latch.c)
 
 # Low-rate internal die temperature; no separate telemetry stream.
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_temperature.c)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/Core/Src/board_temperature.c
+    Core/Src/igniter_sense.c)
 
 # Board-owned explicit manual recovery: strict singleton target, primary-source
 # validation and verified persistent stale-command floor; SDK remains generic.
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_wire.c
     ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_boot.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/board_bootstrap_storage.c
+        Core/Src/bootstrap_marker.c
     ${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_floor.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_SOURCE_DIR}/Core/Src/board_recovery_transport.c>")

@@ -74,6 +74,9 @@ uint8_t telemetry_unix_is_valid(void);
 
 void telemetry_set_unix_time_ms(uint64_t unix_ms);
 
+/* Local automatic cause: immutable prior-observed UTC, zero stays unknown. */
+SedsResult log_telemetry_string_asynchronous_at(SedsDataType type, const char *text, uint64_t original_utc);
+
 void die(const char *fmt, ...);
 
 #ifdef __cplusplus

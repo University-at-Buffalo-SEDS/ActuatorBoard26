@@ -28,6 +28,9 @@ typedef struct {
 } stepper_t;
 
 void stepperInit(stepper_t *hw);
+/* Boot-only nonselected/unknown mode: requires nSLEEP already low; never
+ * releases a live holding driver or wakes/coasts an active move. */
+int stepperInitAsleep(stepper_t *hw);
 void stepperSetDir(stepper_t *hw, uint8_t dir);
 int  stepperSingleStep(stepper_t *hw);
 int  stepperMoveSteps(stepper_t *hw, uint32_t steps, uint32_t period_us);
@@ -36,5 +39,14 @@ bool stepperIsMoveActive(const stepper_t *hw);
 void stepperStopMoveTimer(stepper_t *hw);
 void stepperTimerPeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void stepperSleep(stepper_t *hw);
+/* Explicit ordinary recovery owner only: never wakes or pulses the driver. */
+int stepperRecoverAsleep(stepper_t *hw);
+bool stepperIsStoppedAsleep(const stepper_t *hw);
 int  stepperWake(stepper_t *hw);
 void stepperReset(stepper_t *hw);
+
+/* Task owner must validate original manual/motion authority before bounded begin.
+ * Delay is separate and must run outside state owner; it never re-enables GPIO. */
+int stepperWakeBegin(stepper_t *hw);
+int stepperWakeWait(stepper_t *hw);
+void stepperStopAsleepImmediate(stepper_t *hw);

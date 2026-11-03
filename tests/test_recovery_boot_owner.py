@@ -15,7 +15,7 @@ class BootOwnerOutputsTests(unittest.TestCase):
 #include <stdint.h>
 static uint8_t g_aborted,g_launch_sequence_active;
 typedef struct{uint32_t ODR;}Port;
-static Port ports[7];
+static Port ports[11];
 '''
   if vb:
    prefix+=r'''
@@ -38,8 +38,10 @@ static uint32_t compare[2]={90,90};
 static unsigned servo_relative_degrees_to_us(unsigned degrees,unsigned zero){(void)zero;return degrees;}
 '''
   else:
-   for i,name in enumerate(['IGNITER_PIN','NITROGEN_PIN','NITROUS_PIN','BACKUP_VALVE_EN','STEPPER_SLEEP','N2_SIG','N20_SIG']):
+   prefix+='#include <stdbool.h>\nstatic struct {bool active;} g_fill_motion;\n'
+   for i,name in enumerate(['IGNITER_PIN','NITROGEN_PIN','NITROUS_PIN','BACKUP_VALVE_EN','STEPPER_SLEEP','N2_SIG','N20_SIG','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']):
     prefix+=f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n'
+  extra='' if vb else 'for(unsigned i=7;i<11;i++){ports[0].ODR=0;ports[i].ODR=1;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));ports[i].ODR=0;}g_fill_motion.active=true;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));'
   main=r'''
 int main(void){
  uint32_t outputs=0;
@@ -52,11 +54,12 @@ int main(void){
  assert(!(flags&BOARD_RECOVERY_OWNER_STOPPED));
  g_launch_sequence_active=0;ports[0].ODR=1;
  flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));
+ EXTRA
  return 0;
 }
 '''
   with tempfile.TemporaryDirectory(prefix='boot-owner-') as tmp:
-   p=Path(tmp);(p/'test.c').write_text(prefix+production+main)
+   p=Path(tmp);(p/'test.c').write_text(prefix+production+main.replace('EXTRA',extra))
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Core/Inc'),str(p/'test.c'),'-o',str(p/'test')],check=True)
    subprocess.run([str(p/'test')],check=True)
 

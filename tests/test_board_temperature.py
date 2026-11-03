@@ -5,6 +5,7 @@ class TemperatureTests(unittest.TestCase):
  def test_factory_ratio_and_wire_backward_compatibility(self):
   c=r"""
 #include "board_temperature_math.h"
+#include "igniter_sense_math.h"
 #include <assert.h>
 #include <stddef.h>
 int main(void) {
@@ -38,6 +39,7 @@ int main(void) {
   source='\n'.join(l for l in source.splitlines() if not l.startswith('#include'))
   c=r"""
 #include "board_temperature_math.h"
+#include "igniter_sense_math.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -63,6 +65,7 @@ static ADC_TypeDef adc;
 #define TEMPSENSOR_CAL2_TEMP 130
 static const uint16_t vrefcal=1500,cal1=1200,cal2=1600;
 #define VREFINT_CAL_ADDR (&vrefcal)
+#define VREFINT_CAL_VREF 3000U
 #define TEMPSENSOR_CAL1_ADDR (&cal1)
 #define TEMPSENSOR_CAL2_ADDR (&cal2)
 static uint32_t tick,mask,starts;

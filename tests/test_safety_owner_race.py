@@ -25,7 +25,7 @@ class SafetyOwnerRaceTests(unittest.TestCase):
 #include "safety_diagnostics.h"
 #include <stddef.h>
 #include <string.h>
-volatile safety_abort_diagnostic_t g_safety_first_abort;
+
 static uint8_t g_aborted,g_igniter_on,g_nitrogen_open,g_nitrous_open;
 static uint8_t g_launch_sequence_active,g_launch_sequence_igniter_started,g_launch_sequence_holdoff_active,g_plumbing_retract_active;
 static uint32_t g_plumbing_retract_steps_remaining;
@@ -33,7 +33,7 @@ static ULONG g_launch_sequence_igniter_start_ticks,g_launch_sequence_igniter_sto
 static unsigned gpio_writes,writes_when_relaunched,recoveries,interleave=1;
 static uint64_t now_ms,safety_heartbeat_missing_since_ms;
 static uint32_t safety_heartbeat_timeout_count,safety_adc_start_step=2;
-typedef struct{uint32_t ODR;}Port;static Port ports[7];static int stepper;
+typedef struct{uint32_t ODR;}Port;static Port ports[11];static int stepper;
 #define GPIO_PIN_RESET 0
 #define GPIO_PIN_SET 1
 #define LAUNCH_SEQUENCE_IGNITER_ON_DURATION_MS 10000U
@@ -45,6 +45,13 @@ typedef struct{uint32_t ODR;}Port;static Port ports[7];static int stepper;
 PORTS
 static void HAL_GPIO_WritePin(Port*p,unsigned pin,unsigned value){gpio_writes++;if(value)p->ODR|=pin;else p->ODR&=~pin;}
 static void stepperSleep(int*p){(void)p;}
+/* This late-producer fixture exercises the real finish callbacks with a
+ * conservatively unready selector. Actual driver rearm is tested separately. */
+static uint32_t g_fill_start_serial;
+static uint8_t fill_settings_mode(void){return 255U;}
+static bool fill_settings_ready(void){return false;}
+static bool stepperIsStoppedAsleep(int*p){(void)p;return false;}
+static uint8_t recovery_read_outputs(uint32_t*mask){return read_outputs(mask);}
 static void publish_expected_outputs(void){}
 static int publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 static void publish_umbilical_statuses_if_due(ULONG*p){(void)p;}
@@ -52,30 +59,32 @@ static void retry_pending_status_reports(void){}
 static UINT tx_thread_sleep(ULONG ticks){(void)ticks;return 0;}
 static ULONG ms_to_ticks(uint32_t ms){return ms;}
 static ULONG launch_sequence_igniter_start_ticks(uint64_t timestamp){(void)timestamp;return 10000;}
+ACTUAL_FILL_HELPERS
 ACTUAL_FORCE
 ACTUAL_RECOVERY_FINISH
 ACTUAL_START
-static void owner_abort_pass(void){thread_comm_msg_t msg;ULONG last_umbilical_status_ticks=0;do ACTUAL_OWNER_ABORT while(0);}
-static void record_and_interleave(uint32_t reason,uint64_t now,uint64_t heartbeat,uint32_t state,uint32_t detail,uint32_t before){
- safety_record_first_abort(reason,now,heartbeat,state,detail,before);
- if(!interleave)return;
+static void owner_abort_pass(void){thread_comm_msg_t msg;uint32_t command_epoch=0;ULONG last_umbilical_status_ticks=0;do ACTUAL_OWNER_ABORT while(0);}
+static uint8_t local_and_interleave(uint32_t reason,uint64_t now,uint64_t heartbeat,uint32_t state,uint32_t detail,uint64_t original_utc,uint8_t heartbeat_only){
+ uint8_t claimed=thread_comm_request_local_abort(reason,now,heartbeat,state,detail,original_utc,heartbeat_only);
+ if(!claimed||!interleave)return claimed;
  /* The real owner first consumes the retained Abort, then serially completes
   * recovery, then a NEW admitted Launch arms the actual sequence function. */
  assert(thread_comm_get_abort());owner_abort_pass();assert(!g_launch_sequence_active);
  BoardRecoverySnapshot snapshot;assert(board_recovery_snapshot(&snapshot)==0);
  assert(board_recovery_begin_prepare(0,snapshot.abort_epoch)==0);
  assert(board_recovery_apply_safe(0,snapshot.abort_epoch,&snapshot)==-14);
- thread_comm_service_board_recovery();assert(!thread_comm_get_abort()&&!g_aborted);
+ board_recovery_execute_owned();assert(!thread_comm_get_abort()&&!g_aborted);
  thread_comm_msg_t launch={.cmd=14,.timestamp_ms=10000};assert(thread_comm_admit_launch(launch)==TX_SUCCESS);
- start_launch_sequence(10000);assert(g_launch_sequence_active&&board_launch_latch_is_set());
- HAL_GPIO_WritePin(&ports[0],1,GPIO_PIN_SET);writes_when_relaunched=gpio_writes;recoveries++;
+ start_launch_sequence(10000,thread_comm_manual_epoch());assert(g_launch_sequence_active&&board_launch_latch_is_set());
+ HAL_GPIO_WritePin(&ports[0],1,GPIO_PIN_SET);writes_when_relaunched=gpio_writes;recoveries++;return claimed;
 }
+static uint64_t telemetry_event_clock_snapshot(void){return 9000;}
 static uint64_t safety_now_ms(void){return now_ms;}
 static UINT safety_adc_start(void){return TX_QUEUE_ERROR;}
-#define safety_record_first_abort record_and_interleave
+#define thread_comm_request_local_abort local_and_interleave
 ACTUAL_HEARTBEAT
 static void adc_failure_once(void){do ACTUAL_ADC_FAILURE while(0);}
-#undef safety_record_first_abort
+#undef thread_comm_request_local_abort
 int main(int argc,char**argv){
  assert(argc==2);TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==0);board_recovery_bind_owner(read_outputs,prepare,finish);
  assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_PREFILL)==TX_SUCCESS);
@@ -93,9 +102,11 @@ int main(int argc,char**argv){
 }
 '''
   ports=''
-  for i,name in enumerate(['IGNITER_PIN','NITROGEN_PIN','N2_SIG','NITROUS_PIN','N20_SIG','BACKUP_VALVE_EN','STEPPER_SLEEP']):ports+=f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n'
+  for i,name in enumerate(['IGNITER_PIN','NITROGEN_PIN','N2_SIG','NITROUS_PIN','N20_SIG','BACKUP_VALVE_EN','STEPPER_SLEEP','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']):ports+=f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n'
   owner=(ROOT/'Core/Src/main_task.c').read_text();safety=(ROOT/'Core/Src/safety_task.c').read_text()
-  for key,value in [('PORTS',ports),('ACTUAL_FORCE',function(owner,'main_task_force_outputs_safe_off')),('ACTUAL_RECOVERY_FINISH',function(owner,'recovery_finish_owner')),('ACTUAL_START',function(owner,'start_launch_sequence')),('ACTUAL_OWNER_ABORT',block(owner[owner.index('void main_task_entry('):],'if (thread_comm_get_abort() != 0U)\n        {')),('ACTUAL_HEARTBEAT',function(safety,'safety_check_heartbeat')),('ACTUAL_ADC_FAILURE',block(safety,'if (safety_adc_start() != TX_SUCCESS)'))]:code=code.replace(key,value)
+  fill_helpers='#include \"fill_motion.h\"\nstatic FillMotion g_fill_motion;static bool g_fill_drive_fault;\n'+(ROOT/'Core/Src/fill_motion.c').read_text()+''.join(function(owner,name) for name in ['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked'])
+  fill_helpers='#include \"fill_motion_status.h\"\nstatic FillMotionProvenance g_fill_provenance;\n'+fill_helpers+'\n'+(ROOT/'Core/Src/fill_motion_status.c').read_text()
+  for key,value in [('ACTUAL_FILL_HELPERS',fill_helpers),('PORTS',ports),('ACTUAL_FORCE',function(owner,'main_task_force_outputs_safe_off')),('ACTUAL_RECOVERY_FINISH',function(owner,'recovery_finish_base')+function(owner,'recovery_fill_rearm_ready')+function(owner,'recovery_finish_owner')),('ACTUAL_START','static uint32_t g_launch_manual_epoch;\n'+__import__('re').search(r'typedef struct\{[^\n]*\} LaunchStart;',owner).group(0)+'\n'+function(owner,'start_launch_sequence_locked')+'\n'+function(owner,'start_launch_sequence')),('ACTUAL_OWNER_ABORT',block(owner[owner.index('void main_task_entry('):],'if (thread_comm_get_abort() != 0U)\n        {')),('ACTUAL_HEARTBEAT',function(safety,'safety_check_heartbeat')),('ACTUAL_ADC_FAILURE',block(safety,'if (safety_adc_start() != TX_SUCCESS)'))]:code=code.replace(key,value)
   with tempfile.TemporaryDirectory(prefix='safety-owner-race-')as tmp:
    p=Path(tmp);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);binary=p/'test'
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),str(p/'test.c'),'-o',str(binary)],check=True)

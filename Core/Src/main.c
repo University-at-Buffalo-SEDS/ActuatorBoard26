@@ -1,3 +1,4 @@
+#include "persistent_store.h"
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -29,6 +30,7 @@
 #include "stepper_driver.h"
 #include "flight_state_cache.h"
 #include "board_recovery_boot.h"
+#include "board_bootstrap_storage.h"
 #include <stdint.h>
 #include <stdio.h>
 extern UX_SLAVE_CLASS_CDC_ACM *cdc_acm;
@@ -126,8 +128,10 @@ int main(void)
   /* USER CODE END 2 */
 
   board_abort_latch_init();
+  (void)persistent_store_boot_begin();
   /* Establish recovery identity before cached state restore and control tasks. */
   (void)board_recovery_boot_generation();
+  board_bootstrap_storage_probe_boot();
   flight_state_cache_restore();
   board_watchdog_start();
   MX_ThreadX_Init();

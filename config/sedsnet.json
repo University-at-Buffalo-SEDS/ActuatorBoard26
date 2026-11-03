@@ -727,6 +727,68 @@
       ],
       "reliable": "Ordered",
       "priority": 200
+    },
+    {
+      "rust": "AbFillDriveSettings",
+      "name": "AB_FILL_DRIVE_SETTINGS",
+      "doc": "Application-owned fill drive settings v1; exact little endian contract FILL-DRIVE-CONTRACT.json. Bridge unavailable as-drawn.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt8",
+        "count": 32
+      },
+      "endpoints": [],
+      "reliable": "Ordered",
+      "priority": 200
+    },
+    {
+      "rust": "AbFillDriveStatus",
+      "name": "AB_FILL_DRIVE_STATUS",
+      "doc": "Application-owned fill drive settings v1; exact little endian contract FILL-DRIVE-CONTRACT.json. Bridge unavailable as-drawn.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt8",
+        "count": 40
+      },
+      "endpoints": [
+        "ActuatorGroundStation"
+      ],
+      "reliable": "Ordered",
+      "priority": 200
+    },
+    {
+      "rust": "AbFillMotionStatusV2",
+      "name": "AB_FILL_MOTION_STATUS_V2",
+      "doc": "Application-owned negotiated motion provenance v2;56 explicit LE bytes. Existing drive status40 remains unchanged.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt8",
+        "count": 56
+      },
+      "endpoints": [
+        "ActuatorGroundStation"
+      ],
+      "reliable": "Ordered",
+      "priority": 200
+    },
+    {
+      "rust": "ActuatorIgniterSense",
+      "name": "AB_IGNITER_SENSE",
+      "doc": "Read-only igniter current-sense signal v1:12UInt32 words version,flags,boot generation lo/hi,source sequence,source uptime lo/hi,12-bit ADC counts,VDDA mV,sample age ms,reference age ms,hardware profile. Schematic045B5-on3V3 has no specified amperes conversion.",
+      "class": "Data",
+      "element": {
+        "kind": "Static",
+        "data_type": "UInt32",
+        "count": 12
+      },
+      "endpoints": [
+        "ActuatorGroundStation"
+      ],
+      "reliable": "Off",
+      "priority": 0
     }
   ]
 }
