@@ -116,7 +116,8 @@ SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
  if(seds_router_get_network_time_ms(r,&now)!=SEDS_OK||!fresh(p->timestamp,now))return emit(r,q,4U);
  if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready()||board_recovery_snapshot(&snapshot)!=0)return emit(r,q,6U);
  if(decode64(q+12)!=board_recovery_boot_current()||decode32(q+20)!=snapshot.abort_epoch)return emit(r,q,4U);
- if(snapshot.actual_state!=1U)return emit(r,q,5U);
+ /* Configuration is quiescent in Startup or Idle; active/Abort states remain blocked. */
+ if(snapshot.actual_state>1U||(snapshot.flags&BOARD_RECOVERY_ABORT_LATCHED)!=0U)return emit(r,q,5U);
  if(!cache_enter())return SEDS_IO;
  if(cached.pending){result=5U;}
  else {memcpy(cached.bytes,q,32);cached.source=p->timestamp;cached.router=r;cached.result=1U;cached.valid=true;cached.pending=true;cached.dirty=false;result=1U;}

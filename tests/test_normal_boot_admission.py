@@ -45,6 +45,29 @@ int main(int argc,char**argv){
  assert(board_recovery_floor_is_healthy());
  assert(persistent_store_runtime_start()==TX_SUCCESS);thread_present=true;TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==TX_SUCCESS);
  board_recovery_bind_owner(read_outputs,prepare_outputs,finish_outputs);assert(board_bootstrap_storage_bind_owner(stop_owner));
+ if(!strcmp(scenario,"configuration_transport")){
+  int cookie=0;SedsRouter*router=(SedsRouter*)&cookie;
+  uint8_t body[32]={1,1,2};bootstrap_write64(body+4,101);bootstrap_write64(body+12,generation);bootstrap_write64(body+24,77);
+  uint32_t endpoint=SEDS_EP_ACTUATOR_BOARD;
+  SedsPacketView packet={.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS,.sender="GS",.sender_len=2,.endpoints=&endpoint,.num_endpoints=1,.payload=body,.payload_len=32,.timestamp=10000};
+  BoardRecoverySnapshot snap={0};assert(board_recovery_snapshot(&snap)==0&&snap.actual_state==0);
+  bootstrap_write32(body+20,snap.abort_epoch);
+  assert(fill_settings_handle(router,&packet)==SEDS_OK&&response[1]==1U);
+  fill_settings_service();assert(response[1]==0U&&fill_settings_mode()==2U&&fill_settings_ready());
+  assert(mode_prepares==1U&&!thread_comm_get_abort());
+  for(uint8_t state=2;state<=14;state++){
+   assert(thread_comm_set_flight_state(state)==TX_SUCCESS);bootstrap_write64(body+4,102+state);
+   unsigned before=mode_prepares,writes=media_writes;
+   assert(fill_settings_handle(router,&packet)==SEDS_OK&&response[1]==5U);fill_settings_service();
+   assert(mode_prepares==before&&media_writes==writes);
+  }
+  assert(thread_comm_set_flight_state(0)==TX_SUCCESS);
+  assert(thread_comm_request_manual_abort()==TX_SUCCESS);bootstrap_write64(body+4,200);
+  assert(board_recovery_snapshot(&snap)==0);bootstrap_write32(body+20,snap.abort_epoch);
+  unsigned before=mode_prepares,writes=media_writes;
+  assert(fill_settings_handle(router,&packet)==SEDS_OK&&response[1]==5U);fill_settings_service();
+  assert(mode_prepares==before&&media_writes==writes&&thread_comm_get_abort());return 0;
+ }
  if(!strcmp(scenario,"configuration_startup")){
   for(uint8_t state=0;state<=1;state++){
    assert(thread_comm_set_flight_state(state)==TX_SUCCESS);
@@ -108,6 +131,7 @@ class NormalBootAdmission(unittest.TestCase):
  def test_healthy_legacy_absent_metadata_initializes_without_commissioning(self):self.case('legacy')
  def test_healthy_existing_bookkeeping_preserves_normal_command_processing(self):self.case('healthy')
  def test_actual_abort_on_boot_is_not_cleared_by_initialization(self):self.case('abort_boot')
+ def test_real_fill_settings_transport_accepts_startup_but_rejects_active_and_abort(self):self.case('configuration_transport')
  def test_drive_configuration_accepts_startup_and_idle_but_abort_cancels_publication(self):self.case('configuration_startup')
  def test_drive_configuration_refuses_active_phase(self):self.case('configuration_active')
  def test_corrupt_deleted_keys_and_invalid_marker_remain_faulted(self):
