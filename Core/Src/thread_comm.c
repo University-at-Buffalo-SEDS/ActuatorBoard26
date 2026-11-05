@@ -1093,7 +1093,8 @@ bool thread_comm_fill_config_begin(uint32_t epoch,uint8_t(*prepare)(void*),void*
  if(!prepare||!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return false;
  bool allowed=epoch&&epoch!=UINT32_MAX&&epoch==g_thread_comm_recovery_epoch&&
   !g_command_admission_fault&&!g_fill_configuration_pending&&!g_recovery_pending&&
-  persistent_store_controls_ready()&&g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE&&board_launch_latch_is_set()==0U;
+  persistent_store_controls_ready()&&!g_thread_comm_abort&&
+  (g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_STARTUP||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE)&&board_launch_latch_is_set()==0U;
  if(allowed){g_fill_configuration_pending=1U;allowed=prepare(context)!=0U;if(!allowed)g_fill_configuration_pending=0U;}
  bool released=fill_unlock();return allowed&&released;
 }
@@ -1103,7 +1104,7 @@ bool thread_comm_fill_config_end(uint32_t epoch,void(*publish)(void*),void*conte
  bool safe=g_recovery_read_outputs&&(g_recovery_read_outputs(&mask)&(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS))==(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS);
  bool allowed=g_fill_configuration_pending&&epoch==g_thread_comm_recovery_epoch&&
   !g_command_admission_fault&&!g_recovery_pending&&persistent_store_controls_ready()&&
-  g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE&&board_launch_latch_is_set()==0U&&safe;
+  !g_thread_comm_abort&&(g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_STARTUP||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE)&&board_launch_latch_is_set()==0U&&safe;
  if(allowed&&publish)publish(context);
  g_fill_configuration_pending=0U;bool released=fill_unlock();return allowed&&released;
 }

@@ -8,8 +8,12 @@ import os,subprocess,tempfile,unittest
 from native_sdk import configured_dependency_source
 ROOT=Path(__file__).resolve().parents[1]
 MAIN=r'''
+#include "fill_owner_gate.h"
 extern volatile uint32_t g_persistent_store_errors;
 static unsigned normal_applied;
+static unsigned configuration_prepared,configuration_published;
+static uint8_t configuration_prepare(void*context){(void)context;++configuration_prepared;return 1U;}
+static void configuration_publish(void*context){(void)context;++configuration_published;}
 static void normal_apply(void*context);
 static void prove_blocked(void){thread_comm_msg_t msg={.cmd=12,.timestamp_ms=10000};assert(thread_comm_admit_network(msg,10000)!=TX_SUCCESS);assert(!thread_comm_manual_effect_owned(10000,thread_comm_manual_epoch(),normal_apply,NULL));}
 static void normal_apply(void*context){(void)context;++normal_applied;}
@@ -41,6 +45,27 @@ int main(int argc,char**argv){
  assert(board_recovery_floor_is_healthy());
  assert(persistent_store_runtime_start()==TX_SUCCESS);thread_present=true;TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==TX_SUCCESS);
  board_recovery_bind_owner(read_outputs,prepare_outputs,finish_outputs);assert(board_bootstrap_storage_bind_owner(stop_owner));
+ if(!strcmp(scenario,"configuration_startup")){
+  for(uint8_t state=0;state<=1;state++){
+   assert(thread_comm_set_flight_state(state)==TX_SUCCESS);
+   assert(thread_comm_fill_config_begin(thread_comm_manual_epoch(),configuration_prepare,NULL));
+   assert(thread_comm_fill_config_end(thread_comm_manual_epoch(),configuration_publish,NULL));
+  }
+  assert(configuration_prepared==2&&configuration_published==2);
+  assert(thread_comm_set_flight_state(0)==TX_SUCCESS);
+  uint32_t before=thread_comm_manual_epoch();
+  assert(thread_comm_fill_config_begin(before,configuration_prepare,NULL));
+  assert(thread_comm_request_manual_abort()==TX_SUCCESS);
+  assert(!thread_comm_fill_config_end(before,configuration_publish,NULL));
+  assert(configuration_published==2&&thread_comm_get_abort());
+  assert(!thread_comm_fill_config_begin(thread_comm_manual_epoch(),configuration_prepare,NULL));
+  return 0;
+ }
+ if(!strcmp(scenario,"configuration_active")){
+  assert(thread_comm_set_flight_state(2)==TX_SUCCESS);
+  assert(!thread_comm_fill_config_begin(thread_comm_manual_epoch(),configuration_prepare,NULL));
+  assert(configuration_prepared==0&&configuration_published==0);return 0;
+ }
  int cookie=0;SedsRouter*router=(SedsRouter*)&cookie;assert(flight_state_cache_init(router)==SEDS_OK);board_recovery_transport_set_router(router);
  if(!strcmp(scenario,"abort_boot")){
   assert(thread_comm_get_abort());prove_blocked();assert(!normal_applied);
@@ -83,6 +108,8 @@ class NormalBootAdmission(unittest.TestCase):
  def test_healthy_legacy_absent_metadata_initializes_without_commissioning(self):self.case('legacy')
  def test_healthy_existing_bookkeeping_preserves_normal_command_processing(self):self.case('healthy')
  def test_actual_abort_on_boot_is_not_cleared_by_initialization(self):self.case('abort_boot')
+ def test_drive_configuration_accepts_startup_and_idle_but_abort_cancels_publication(self):self.case('configuration_startup')
+ def test_drive_configuration_refuses_active_phase(self):self.case('configuration_active')
  def test_corrupt_deleted_keys_and_invalid_marker_remain_faulted(self):
   for case in ['deleted','corrupt','deletedfloor','badmarker']:
    with self.subTest(case=case):self.case(case)
