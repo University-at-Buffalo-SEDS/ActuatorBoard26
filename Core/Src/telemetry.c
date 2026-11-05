@@ -208,6 +208,18 @@ static bool telemetry_unix_ms_to_utc(uint64_t unix_ms, int32_t *year, uint8_t *m
   }
 }
 
+/* Called only by the existing router handler owner; no second router lock.
+ * Pair quantization is bounded to one ThreadX tick. Accepted owners never
+ * consult this clock again and exact duplicates keep their first deadline. */
+static uint32_t launch_monotonic_tick(void){return (uint32_t)tx_time_get();}
+static UINT admit_timed_launch(const SedsPacketView*p) {
+ uint64_t utc=0U;const uint32_t before=launch_monotonic_tick();
+ if(!g_router.r||seds_router_get_network_time_ms(g_router.r,&utc)!=SEDS_OK)return TX_QUEUE_ERROR;
+ const uint32_t after=launch_monotonic_tick();
+ if((uint32_t)(after-before)>1U)return TX_QUEUE_ERROR;
+ return thread_comm_admit_network_launch_original_at((thread_comm_msg_t){.cmd=CMD_IGNITER_SEQUENCE,.timestamp_ms=p->timestamp},p->sender,(uint32_t)p->sender_len,utc,before,launch_monotonic_tick);
+}
+
 SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
 {
   /* An exact already committed original needs no new storage read/admission.
@@ -265,7 +277,7 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   /* A full command queue must not block the telemetry worker indefinitely.
    * Blocking here prevents CAN draining, discovery, time sync, and all future
    * commands, which presents as the board becoming unresponsive over time. */
-  const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? thread_comm_admit_network_launch_original(msg,pkt->sender,(uint32_t)pkt->sender_len) :
+  const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? admit_timed_launch(pkt) :
       thread_comm_admit_network(msg,pkt->timestamp);
   if (admitted==THREAD_COMM_STALE_TIMESTAMP) return SEDS_OK;
   if (admitted != TX_SUCCESS)

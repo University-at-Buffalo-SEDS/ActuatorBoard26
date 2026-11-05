@@ -15,13 +15,25 @@ def prefix():
  harness=literal(BASE/'tests/test_verified_launch_latch.py','HARNESS').split('static UINT launch_request(void)')[0]
  harness=harness.replace('bool persistent_store_controls_ready(void){return true;}','static bool storage_ready=true;bool persistent_store_controls_ready(void){return storage_ready;}')
  harness=harness.replace('bool persistent_store_recovery_ready(void){return true;}','bool persistent_store_recovery_ready(void){return storage_ready;}')
- return harness.replace('ACTUAL_OWNER','')
+ return harness.replace('ACTUAL_OWNER','')+'\nstatic uint32_t sampled_launch_tick(void){return 0U;}\nUINT fixture_timed_launch(thread_comm_msg_t original,const char*sender,uint32_t length){return thread_comm_admit_network_launch_original_at(original,sender,length,10000U,0U,sampled_launch_tick);}\n'
 def failure_prefix():
  pre=prefix()
  old='UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;return 0;}'
  assert old in pre
  return pre.replace(old,'static bool fail_next_state_release;UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;if(m==state_mutex&&fail_next_state_release){fail_next_state_release=false;return TX_MUTEX_ERROR;}return 0;}')
 def compile_case(code,case,inline_state=False):
+ # Calls in the fixture offer an explicit coherent pre-admission clock.
+ # The production source is separately compiled/included under its real names.
+ code=code.replace('thread_comm_admit_network_launch_original(', 'fixture_timed_launch(')
+ effective=re.sub(r'#ifdef VB\n.*?#endif','',code,flags=re.S) if ROOT.name=='ActuatorBoard26' else code
+ if 'ULONG tx_time_get(void){' not in effective:code+='\nULONG tx_time_get(void){return 0;}\n'
+ if 'SedsResult Valve_Command_handler(' in code:
+  telemetry=(ROOT/'Core/Src/telemetry.c').read_text()
+  adapter='\nstatic SedsResult seds_router_get_network_time_ms(void*r,uint64_t*out){(void)r;*out=10000U;return SEDS_OK;}\n'
+  if 'g_router' not in code:adapter='static struct{void*r;}g_router={(void*)1};\n'+adapter
+  helpers=adapter+function(telemetry,'launch_monotonic_tick')+'\n'+function(telemetry,'admit_timed_launch')+'\n'
+  code=code.replace('SedsResult Valve_Command_handler(',helpers+'SedsResult Valve_Command_handler(')
+  code=code.replace('static struct{void*r;}g_router;','static struct{void*r;}g_router={(void*)1};')
  with tempfile.TemporaryDirectory(prefix='postlaunch-storage-')as temp:
   p=Path(temp);(p/'main.h').write_text(literal(BASE/'tests/test_recovery_durable_barrier.py','MAIN'))
   tree=ast.parse((BASE/'tests/test_board_recovery_owner.py').read_text())
@@ -123,7 +135,7 @@ static void service_plumbing_retract(void){}
 static void service_auxiliary_retract(void){}
 static void publish_umbilical_statuses_if_due(ULONG*p){(void)p;}
 static void retry_pending_status_reports(void){}
-"""+context+'\n'+'\n'.join(function(main,n)for n in ['ms_to_ticks','launch_sequence_igniter_start_ticks','start_launch_sequence_locked','start_launch_sequence','service_launch_sequence_locked','service_launch_sequence','manual_stop_apply_locked','main_task_force_outputs_safe_off'])+r"""
+"""+context+'\n'+'\n'.join(function(main,n)for n in ['ms_to_ticks','start_launch_sequence_locked','start_launch_sequence','service_launch_sequence_locked','service_launch_sequence','manual_stop_apply_locked','main_task_force_outputs_safe_off'])+r"""
 /* No other command is inserted; this adapter routes the actual dequeued Launch
  * into its real owner. The complete real main-loop body follows unchanged. */
 static void handle_command(thread_comm_msg_t message,uint32_t epoch){assert(message.cmd==CMD_IGNITER_SEQUENCE);start_launch_sequence(message.timestamp_ms,epoch);}

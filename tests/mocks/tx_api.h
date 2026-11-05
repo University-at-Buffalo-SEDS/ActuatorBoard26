@@ -18,6 +18,8 @@ typedef struct { int unused; } TX_BYTE_POOL;
 #define TX_NO_WAIT 0U
 #define TX_WAIT_FOREVER 0xFFFFFFFFUL
 #define TX_INHERIT 1U
+/* Match this board's real ThreadX tick frequency. */
+#define TX_TIMER_TICKS_PER_SECOND 1000U
 
 UINT tx_mutex_create(TX_MUTEX *mutex, const char *name, UINT inherit);
 UINT tx_mutex_get(TX_MUTEX *mutex, ULONG wait_option);

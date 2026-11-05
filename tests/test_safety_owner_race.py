@@ -58,7 +58,8 @@ static void publish_umbilical_statuses_if_due(ULONG*p){(void)p;}
 static void retry_pending_status_reports(void){}
 static UINT tx_thread_sleep(ULONG ticks){(void)ticks;return 0;}
 static ULONG ms_to_ticks(uint32_t ms){return ms;}
-static ULONG launch_sequence_igniter_start_ticks(uint64_t timestamp){(void)timestamp;return 10000;}
+ULONG tx_time_get(void){return 100U;}
+static uint32_t fixture_launch_tick(void){return (uint32_t)tx_time_get();}
 ACTUAL_FILL_HELPERS
 ACTUAL_FORCE
 ACTUAL_RECOVERY_FINISH
@@ -74,7 +75,7 @@ static uint8_t local_and_interleave(uint32_t reason,uint64_t now,uint64_t heartb
  assert(board_recovery_begin_prepare(0,snapshot.abort_epoch)==0);
  assert(board_recovery_apply_safe(0,snapshot.abort_epoch,&snapshot)==-14);
  board_recovery_execute_owned();assert(!thread_comm_get_abort()&&!g_aborted);
- thread_comm_msg_t launch={.cmd=14,.timestamp_ms=10000};assert(thread_comm_admit_launch(launch)==TX_SUCCESS);
+ thread_comm_msg_t launch={.cmd=14,.timestamp_ms=10000};assert(thread_comm_admit_network_launch_original_at(launch,"GS",2U,10000U,fixture_launch_tick(),fixture_launch_tick)==TX_SUCCESS);
  uint32_t launch_epoch=0;assert(thread_comm_receive_owned(&launch,&launch_epoch)==TX_SUCCESS);start_launch_sequence(launch.timestamp_ms,launch_epoch);assert(g_launch_sequence_active&&board_launch_latch_is_set());
  HAL_GPIO_WritePin(&ports[0],1,GPIO_PIN_SET);writes_when_relaunched=gpio_writes;recoveries++;return claimed;
 }

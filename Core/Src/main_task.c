@@ -40,6 +40,7 @@ static void sample_main_task_stack(void)
 #define UMBILICAL_STATUS_PERIOD_TICKS TX_TIMER_TICKS_PER_SECOND
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
 #define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
+_Static_assert(THREAD_COMM_LAUNCH_EFFECT_DELAY_MS == LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS-LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS,"Launch timeline delay drift");
 #define LAUNCH_SEQUENCE_IGNITER_ON_DURATION_MS 10000U
 #define LAUNCH_SEQUENCE_RESTART_HOLDOFF_MS 1500U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS 5000U
@@ -281,57 +282,7 @@ static void service_plumbing_retract(void){
  (void)thread_comm_fill_visit_epoch(0U,service_legacy_locked,0);
 }
 
-static ULONG launch_sequence_igniter_start_ticks(uint64_t packet_timestamp_ms)
-{
-    const ULONG now_ticks = tx_time_get();
-    const uint32_t compensated_start_delay_ms =
-        (LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS > LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS)
-            ? (LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS -
-               LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS)
-            : 0U;
-    const ULONG start_delay_ticks = ms_to_ticks(compensated_start_delay_ms);
-
-    if (packet_timestamp_ms == 0ULL)
-    {
-        return now_ticks + start_delay_ticks;
-    }
-
-#ifdef TELEMETRY_ENABLED
-    const uint64_t now_ms = telemetry_unix_ms();
-#else
-    const uint64_t now_ms = 0ULL; /* No UTC; use the existing local tick deadline. */
-#endif
-    if (now_ms == 0ULL)
-    {
-        return now_ticks + start_delay_ticks;
-    }
-
-    if (now_ms >= packet_timestamp_ms)
-    {
-        const uint64_t packet_age_ms = now_ms - packet_timestamp_ms;
-        if (packet_age_ms > LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS)
-        {
-            return now_ticks + start_delay_ticks;
-        }
-
-        if (packet_age_ms >= compensated_start_delay_ms)
-        {
-            return now_ticks;
-        }
-
-        return now_ticks + ms_to_ticks((uint32_t)(compensated_start_delay_ms - packet_age_ms));
-    }
-
-    const uint64_t packet_future_ms = packet_timestamp_ms - now_ms;
-    if (packet_future_ms > LAUNCH_SEQUENCE_TIMESTAMP_MAX_FUTURE_MS)
-    {
-        return now_ticks + start_delay_ticks;
-    }
-
-    return now_ticks + ms_to_ticks((uint32_t)(packet_future_ms + compensated_start_delay_ms));
-}
-
-typedef struct{ULONG start;uint32_t epoch;} LaunchStart;
+typedef struct{uint32_t start;uint32_t epoch;} LaunchStart;
 static void start_launch_sequence_locked(void*context){
  LaunchStart*q=context;if(g_launch_sequence_active||g_launch_sequence_holdoff_active)return;
  g_launch_manual_epoch=q->epoch;g_launch_sequence_igniter_start_ticks=q->start;
@@ -341,9 +292,9 @@ static void start_launch_sequence_locked(void*context){
 static void start_launch_sequence(uint64_t source,uint32_t epoch){
  thread_comm_launch_owner_t owner={0};
  if(!thread_comm_launch_claim(source,epoch,&owner))return;
- LaunchStart request={launch_sequence_igniter_start_ticks(owner.source_utc),owner.epoch};
+ LaunchStart request={(uint32_t)tx_time_get()+(uint32_t)ms_to_ticks(THREAD_COMM_LAUNCH_EFFECT_DELAY_MS),owner.epoch};
  g_launch_owner=owner;
- (void)thread_comm_launch_begin_owned(&owner,start_launch_sequence_locked,&request);
+ (void)thread_comm_launch_begin_owned_deadline(&owner,start_launch_sequence_locked,&request,&request.start);
 }
 
 static void service_launch_sequence_locked(void*context)
