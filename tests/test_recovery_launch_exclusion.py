@@ -19,6 +19,7 @@ class RecoveryLaunchExclusionTests(unittest.TestCase):
   for name in modules:
    if name not in prefixes:paths.append(str(src/name));continue
    body=(src/name).read_text()
+   if name=="thread_comm.c" and ab:body+="\nvoid audit_fill_configuration_pending(bool value){g_fill_configuration_pending=value;}\n"
    if name=="board_bootstrap_storage.c":body+='\nsize_t audit_job_copy(uint8_t*out,size_t capacity){size_t n=sizeof job+sizeof query;if(capacity<n)return 0;memcpy(out,&job,sizeof job);memcpy(out+sizeof job,&query,sizeof query);return n;}\n'
    (p/name).write_text(prefixes[name]+body);paths.append(str(p/name))
   cls.exe=p/"probe";cls.image=p/"image.nvm"
@@ -43,4 +44,14 @@ class RecoveryLaunchExclusionTests(unittest.TestCase):
  def test_busy_atomic_stage_never_holds_or_installs_job(self):
   self.assertTrue(self.has_claim,"Current firmware must expose atomic stage claim")
   self.case("audit_claim_busy")
+ def test_completed_fresh_normal_query_recovers_without_power_cycle(self):
+  self.case("completed_success","completed")
+ def test_completed_context_and_active_phases_stay_excluded(self):
+  for phase in ["pending","taken","running"]:
+   with self.subTest(phase=phase):self.case("completed_active",phase)
+  for name in ["no_query","prelaunch_query","wrong_issuer","wrong_boot","wrong_epoch","query_nonce","old_source","query_source","expired_query","stop_race","fill_query","fill_claim"]:
+   with self.subTest(name=name):self.case("completed_"+name,"completed")
+ def test_completed_failure_and_new_launch_replay_fences(self):
+  for name in ["release_fault","media_fault","new_launch_replay"]:
+   with self.subTest(name=name):self.case("completed_"+name,"completed")
 if __name__=="__main__":unittest.main()
