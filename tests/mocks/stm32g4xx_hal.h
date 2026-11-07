@@ -8,7 +8,9 @@ typedef enum { HAL_OK = 0, HAL_ERROR = 1, HAL_BUSY = 2, HAL_TIMEOUT = 3 } HAL_St
 typedef enum { GPIO_PIN_RESET = 0, GPIO_PIN_SET = 1 } GPIO_PinState;
 typedef struct { uint32_t output; uint32_t input; } GPIO_TypeDef;
 
-typedef struct { int unused; } FDCAN_HandleTypeDef;
+typedef enum { HAL_FDCAN_STATE_RESET=0, HAL_FDCAN_STATE_READY=1,
+               HAL_FDCAN_STATE_BUSY=2, HAL_FDCAN_STATE_ERROR=3 } HAL_FDCAN_StateTypeDef;
+typedef struct { HAL_FDCAN_StateTypeDef State; } FDCAN_HandleTypeDef;
 typedef struct { uint32_t BusOff; } FDCAN_ProtocolStatusTypeDef;
 typedef struct {
     uint32_t Identifier;
@@ -61,9 +63,12 @@ typedef struct {
 #define FDCAN_IT_RX_FIFO1_NEW_MESSAGE 2U
 #define FDCAN_IT_TX_FIFO_EMPTY 4U
 #define FDCAN_IT_TX_COMPLETE 8U
+#define FDCAN_IT_RX_FIFO0_MESSAGE_LOST 16U
+#define FDCAN_IT_RX_FIFO1_MESSAGE_LOST 32U
 #define FDCAN_RX_FIFO0 0U
 #define FDCAN_RX_FIFO1 1U
 
+HAL_StatusTypeDef HAL_FDCAN_Init(FDCAN_HandleTypeDef *h);
 HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *h);
 HAL_StatusTypeDef HAL_FDCAN_ConfigGlobalFilter(FDCAN_HandleTypeDef *h, uint32_t a,
                                                 uint32_t b, uint32_t c, uint32_t d);

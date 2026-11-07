@@ -35,10 +35,14 @@ static size_t dlc_len(uint32_t dlc)
     return lengths[dlc & 0xFU];
 }
 
+HAL_StatusTypeDef HAL_FDCAN_Init(FDCAN_HandleTypeDef *h)
+{ h->State = HAL_FDCAN_STATE_READY; return HAL_OK; }
 HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *h)
-{ (void)h; stop_count++; return HAL_OK; }
+{ stop_count++; if (h->State != HAL_FDCAN_STATE_BUSY) return HAL_ERROR;
+  h->State = HAL_FDCAN_STATE_READY; return HAL_OK; }
 HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef *h)
-{ (void)h; start_count++; mock_bus_off = 0U; return HAL_OK; }
+{ start_count++; if (h->State != HAL_FDCAN_STATE_READY) return HAL_ERROR;
+  h->State = HAL_FDCAN_STATE_BUSY; mock_bus_off = 0U; return HAL_OK; }
 HAL_StatusTypeDef HAL_FDCAN_GetProtocolStatus(const FDCAN_HandleTypeDef *h,
                                               FDCAN_ProtocolStatusTypeDef *status)
 { (void)h; status->BusOff = mock_bus_off; return HAL_OK; }
@@ -94,7 +98,7 @@ static void receive(const uint8_t *data, size_t len, void *user)
 
 int main(void)
 {
-    FDCAN_HandleTypeDef fdcan = {0};
+    FDCAN_HandleTypeDef fdcan = {.State = HAL_FDCAN_STATE_READY};
     can_bus_init(&fdcan);
     assert(can_bus_subscribe_rx(receive, NULL) == HAL_OK);
     assert(can_bus_subscribe_rx(receive, NULL) == HAL_ERROR);

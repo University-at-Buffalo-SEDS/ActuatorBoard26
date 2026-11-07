@@ -197,42 +197,66 @@ volatile uint32_t g_fdcan_bus_off_count = 0;
 volatile uint32_t g_fdcan_recovery_count = 0;
 static volatile uint8_t g_can_recovering;
 
-/*
- * An unacknowledged CAN bus eventually puts the M_CAN controller into
- * bus-off.  With automatic retransmission enabled, its three pending frames
- * then keep the Tx FIFO full forever.  Recover in thread context so a board
- * that is powered before the rest of the bus resumes as soon as peers appear.
- */
+/* Recovery runs only in the foreground. A failed HAL Stop can leave ERROR,
+ * and PSR.BusOff is not evidence that the HAL/controller is running. */
+#define CAN_BUS_RECOVERY_RETRY_MS 100U
+static uint8_t g_can_restart_pending;
+static uint8_t g_can_recovery_attempted;
+static uint32_t g_can_last_recovery_attempt_ms;
+volatile uint32_t g_fdcan_recovery_attempt_count;
+volatile uint32_t g_fdcan_recovery_fail_count;
+static HAL_StatusTypeDef can_bus_configure_filters(FDCAN_HandleTypeDef *hfdcan);
+
 static HAL_StatusTypeDef can_bus_recover_if_bus_off(void) {
   FDCAN_ProtocolStatusTypeDef protocol_status;
-
-  if (g_hfdcan == NULL ||
-      HAL_FDCAN_GetProtocolStatus(g_hfdcan, &protocol_status) != HAL_OK) {
+  if (g_hfdcan == NULL) return HAL_ERROR;
+  if (HAL_FDCAN_GetProtocolStatus(g_hfdcan, &protocol_status) != HAL_OK) {
+    g_can_restart_pending = 1U;
+    g_can_recovering = 1U;
     return HAL_ERROR;
   }
+  if (protocol_status.BusOff == 0U && !g_can_restart_pending &&
+      g_hfdcan->State == HAL_FDCAN_STATE_BUSY) return HAL_OK;
 
-  if (protocol_status.BusOff == 0U) {
-    return HAL_OK;
-  }
-
-  g_fdcan_bus_off_count++;
+  const uint32_t now = HAL_GetTick();
+  if (g_can_recovery_attempted &&
+      (uint32_t)(now - g_can_last_recovery_attempt_ms) < CAN_BUS_RECOVERY_RETRY_MS)
+    return HAL_BUSY;
+  g_can_recovery_attempted = 1U;
+  g_can_last_recovery_attempt_ms = now;
+  g_can_restart_pending = 1U;
   g_can_recovering = 1U;
+  ++g_fdcan_recovery_attempt_count;
+  if (protocol_status.BusOff != 0U) ++g_fdcan_bus_off_count;
 
-  /* Cancel every configured Tx FIFO element before restarting. */
-  (void)HAL_FDCAN_AbortTxRequest(
-      g_hfdcan, FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
-
-  if (HAL_FDCAN_Stop(g_hfdcan) != HAL_OK) {
-    g_can_recovering = 0U;
-    return HAL_ERROR;
+  if (g_hfdcan->State == HAL_FDCAN_STATE_BUSY) {
+    (void)HAL_FDCAN_AbortTxRequest(
+        g_hfdcan, FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2);
+    if (HAL_FDCAN_Stop(g_hfdcan) != HAL_OK) goto failed;
   }
+  /* Stop timeout leaves HAL ERROR; Start accepts READY only. Reinitialize the
+   * existing controller configuration before retrying, without resetting SDK. */
+  if (g_hfdcan->State != HAL_FDCAN_STATE_READY &&
+      HAL_FDCAN_Init(g_hfdcan) != HAL_OK) goto failed;
+  if (can_bus_configure_filters(g_hfdcan) != HAL_OK) goto failed;
   can_tx_queue_reset();
-  const HAL_StatusTypeDef restarted = HAL_FDCAN_Start(g_hfdcan);
+  if (HAL_FDCAN_Start(g_hfdcan) != HAL_OK) goto failed;
+#if !CAN_BUS_POLLING
+  if (HAL_FDCAN_ActivateNotification(
+          g_hfdcan, FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_NEW_MESSAGE |
+              FDCAN_IT_RX_FIFO0_MESSAGE_LOST | FDCAN_IT_RX_FIFO1_MESSAGE_LOST |
+              FDCAN_IT_TX_FIFO_EMPTY | FDCAN_IT_TX_COMPLETE,
+          FDCAN_TX_BUFFER0 | FDCAN_TX_BUFFER1 | FDCAN_TX_BUFFER2) != HAL_OK)
+    goto failed;
+#endif
+  g_can_restart_pending = 0U;
   g_can_recovering = 0U;
-  if (restarted != HAL_OK) return HAL_ERROR;
-
-  g_fdcan_recovery_count++;
+  ++g_fdcan_recovery_count;
   return HAL_OK;
+failed:
+  ++g_fdcan_recovery_fail_count;
+  /* Keep ISR TX pumping/admission gated, but let the next foreground retry run. */
+  return HAL_ERROR;
 }
 
 static can_bus_rx_frame_t g_rx_ring[CAN_BUS_RX_RING_DEPTH];
