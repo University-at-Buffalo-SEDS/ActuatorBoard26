@@ -15,6 +15,7 @@ typedef int SedsResult;
 #define SEDS_OK 0
 #define SEDS_BAD_ARG -2
 #define SEDS_DT_HEARTBEAT 106U
+#define SEDS_DT_ACTUATOR_COMMAND 218702105U
 #define SEDS_DT_AB_FILL_DRIVE_SETTINGS 257107486U
 #define TX_SUCCESS 0
 typedef struct {uint32_t ty;const char*sender;size_t sender_len;const void*payload;size_t payload_len;} SedsPacketView;
@@ -36,7 +37,8 @@ const char*other[]={"GB","RRLS","GSX","@addr:3561204632"};const size_t sizes[]={
 for(unsigned i=0;i<4;i++){p.sender=other[i];p.sender_len=sizes[i];assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==10000&&!commands);}
 p.sender="@addr:3561204631";p.sender_len=16;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);
 aborted=1;now=12000;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);aborted=0;
-p.ty=7;assert(control_packet_handler(&p,NULL)==17&&commands==1);assert(control_packet_handler(NULL,NULL)==SEDS_BAD_ARG&&commands==2);
+p.ty=7;assert(control_packet_handler(&p,NULL)==SEDS_OK&&!commands);
+p.ty=SEDS_DT_ACTUATOR_COMMAND;assert(control_packet_handler(&p,NULL)==17&&commands==1);assert(control_packet_handler(NULL,NULL)==SEDS_BAD_ARG&&commands==2);
 p.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS;assert(control_packet_handler(&p,NULL)==19&&settings_calls==1&&commands==2);
 return 0;}
 '''
