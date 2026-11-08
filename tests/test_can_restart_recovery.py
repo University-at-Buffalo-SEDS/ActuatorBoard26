@@ -25,25 +25,29 @@ typedef enum{HAL_OK,HAL_ERROR,HAL_BUSY}HAL_StatusTypeDef;
 #define FDCAN_IT_TX_FIFO_EMPTY 16
 #define FDCAN_IT_TX_COMPLETE 32
 #define CAN_BUS_POLLING 0
-typedef struct{int State;}FDCAN_HandleTypeDef;
+typedef struct{uint32_t CCCR;}FDCAN_GlobalTypeDef;
+#define FDCAN_CCCR_INIT 1u
+typedef struct{FDCAN_GlobalTypeDef*Instance;int State;}FDCAN_HandleTypeDef;
+static FDCAN_GlobalTypeDef regs;static unsigned tx_free=3;
 typedef struct{unsigned BusOff;}FDCAN_ProtocolStatusTypeDef;
-static FDCAN_HandleTypeDef handle={HAL_FDCAN_STATE_BUSY},*g_hfdcan=&handle;
+static FDCAN_HandleTypeDef handle={&regs,HAL_FDCAN_STATE_BUSY},*g_hfdcan=&handle;
 static unsigned bus_off,stop_timeout,fail_init,fail_filter,fail_notify,starts,stops,inits,resets,notifications;
 static uint32_t now;
 static unsigned g_fdcan_bus_off_count,g_fdcan_recovery_count;
 static uint8_t g_can_recovering;
 uint32_t HAL_GetTick(void){return now;}
+unsigned HAL_FDCAN_GetTxFifoFreeLevel(FDCAN_HandleTypeDef*h){(void)h;return tx_free;}
 HAL_StatusTypeDef HAL_FDCAN_GetProtocolStatus(FDCAN_HandleTypeDef*h,FDCAN_ProtocolStatusTypeDef*p){(void)h;p->BusOff=bus_off;return HAL_OK;}
 HAL_StatusTypeDef HAL_FDCAN_AbortTxRequest(FDCAN_HandleTypeDef*h,unsigned n){assert(g_can_recovering);(void)h;(void)n;return HAL_OK;}
 /* Checked-in ST HAL state contract: Stop timeout leaves ERROR. Start needs READY. */
 HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef*h){assert(g_can_recovering);++stops;if(h->State!=HAL_FDCAN_STATE_BUSY)return HAL_ERROR;if(stop_timeout){stop_timeout=0;h->State=HAL_FDCAN_STATE_ERROR;return HAL_ERROR;}h->State=HAL_FDCAN_STATE_READY;return HAL_OK;}
 HAL_StatusTypeDef HAL_FDCAN_Init(FDCAN_HandleTypeDef*h){assert(g_can_recovering);++inits;if(fail_init)return HAL_ERROR;h->State=HAL_FDCAN_STATE_READY;return HAL_OK;}
-HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef*h){assert(g_can_recovering);++starts;if(h->State!=HAL_FDCAN_STATE_READY)return HAL_ERROR;h->State=HAL_FDCAN_STATE_BUSY;bus_off=0;return HAL_OK;}
+HAL_StatusTypeDef HAL_FDCAN_Start(FDCAN_HandleTypeDef*h){assert(g_can_recovering);++starts;if(h->State!=HAL_FDCAN_STATE_READY)return HAL_ERROR;h->State=HAL_FDCAN_STATE_BUSY;bus_off=0;regs.CCCR=0;tx_free=3;return HAL_OK;}
 HAL_StatusTypeDef HAL_FDCAN_ActivateNotification(FDCAN_HandleTypeDef*h,unsigned mask,unsigned buffers){assert(g_can_recovering);assert(h->State==HAL_FDCAN_STATE_BUSY);assert(mask==63&&buffers==7);++notifications;return fail_notify?HAL_ERROR:HAL_OK;}
 void can_tx_queue_reset(void){assert(g_can_recovering);++resets;}
 '''+sut+r'''
 HAL_StatusTypeDef can_bus_configure_filters(FDCAN_HandleTypeDef*h){assert(g_can_recovering);assert(h->State==HAL_FDCAN_STATE_READY);return fail_filter?HAL_ERROR:HAL_OK;}
-static void fresh(void){handle.State=HAL_FDCAN_STATE_BUSY;bus_off=stop_timeout=fail_init=fail_filter=fail_notify=starts=stops=inits=resets=notifications=0;g_can_recovering=0;now=0;}
+static void fresh(void){regs.CCCR=0;tx_free=3;handle.State=HAL_FDCAN_STATE_BUSY;bus_off=stop_timeout=fail_init=fail_filter=fail_notify=starts=stops=inits=resets=notifications=0;g_can_recovering=0;now=0;}
 int main(int argc,char**argv){
  (void)argc; (void)argv;
  fresh();for(unsigned n=0;n<10000;n++){now=n;assert(can_bus_recover_if_bus_off()==HAL_OK);}assert(!starts&&!stops&&!inits&&!notifications); /* healthy fastpath untouched */
@@ -55,7 +59,18 @@ int main(int argc,char**argv){
  fresh();handle.State=HAL_FDCAN_STATE_READY;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==1&&notifications==1&&inits==0);
  fresh();now=UINT32_MAX-49;bus_off=1;stop_timeout=1;assert(can_bus_recover_if_bus_off()==HAL_ERROR);bus_off=0;now=49;assert(can_bus_recover_if_bus_off()==HAL_BUSY);now=50;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==1);
  /* A second real bus fault is independently recoverable, with original queue reset. */
- now=150;bus_off=1;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==2&&resets==2);puts("healthy10000passes; StopERROR/clearedBO; repeatedinit/filter/IRQfaults; READY; wrap; repeatedbusoff: PASS");return 0;}
+ now=150;bus_off=1;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==2&&resets==2);
+ /* Not bus-off, but the TX FIFO never drains (no ACK/wedged controller): restart after 2 s only. */
+ fresh();tx_free=0;for(now=1000;now<3000;now++){assert(can_bus_recover_if_bus_off()==HAL_OK);}assert(!starts&&!stops&&!resets);
+ now=3000;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==1&&stops==1&&resets==1&&g_fdcan_tx_stall_count==1&&!g_can_recovering);
+ /* Draining in between restarts the stall window; brief full periods are healthy. */
+ fresh();for(now=10000;now<20000;now++){tx_free=(now%1500)<1400?0:1;assert(can_bus_recover_if_bus_off()==HAL_OK);}assert(!starts&&g_fdcan_tx_stall_count==1);
+ /* Hardware INIT while HAL believes the controller runs is restarted immediately. */
+ fresh();now=50000;regs.CCCR=FDCAN_CCCR_INIT;assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==1&&resets==1&&regs.CCCR==0);
+ /* External restart request (valve-state stall recovery) uses the same path. */
+ fresh();now=60000;can_bus_request_restart();assert(can_bus_recover_if_bus_off()==HAL_OK);assert(starts==1&&resets==1);
+ for(now=60001;now<70000;now++){assert(can_bus_recover_if_bus_off()==HAL_OK);}assert(starts==1);
+ puts("txstall/INIT/request: PASS");puts("healthy10000passes; StopERROR/clearedBO; repeatedinit/filter/IRQfaults; READY; wrap; repeatedbusoff: PASS");return 0;}
 '''
   with tempfile.TemporaryDirectory()as directory:
    c=Path(directory)/'recovery.c';exe=Path(directory)/'recovery';c.write_text(code);subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-omit-frame-pointer',str(c),'-o',str(exe)],check=True);

@@ -48,6 +48,10 @@ HAL_StatusTypeDef can_bus_subscribe_rx(can_bus_rx_cb_t cb, void *user);
  */
 HAL_StatusTypeDef can_bus_unsubscribe_rx(can_bus_rx_cb_t cb, void *user);
 
+/* Foreground request to stop, reinitialize and restart the controller on the
+ * next can_bus_process_rx() pass (same path as bus-off recovery). */
+void can_bus_request_restart(void);
+
 #ifdef __cplusplus
 }
 #endif

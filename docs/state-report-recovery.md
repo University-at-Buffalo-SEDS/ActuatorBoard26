@@ -60,3 +60,29 @@ external active-low H-bridge, nitrous, nitrogen and igniter fault signals. Leavi
 them at zero models a real driver fault and correctly rejects an open command.
 The driver safety logic is not disabled for testing. A layout contract test keeps
 these pin assignments aligned with the generated firmware header.
+
+## Self-recovery of a stalled valve-state stream
+
+Two network-thread checks restore valve-state delivery without a power cycle.
+Neither touches outputs, commands, the abort latch or launch state.
+
+- **CAN controller stall.** The controller is restarted through the bus-off
+  path if it is not bus-off but its 3-slot transmit FIFO has not drained for
+  2 s, or if hardware has left it in INIT while the driver believes it is
+  running. Counter: `g_fdcan_tx_stall_count`. Bus-off restarts still count in
+  `g_fdcan_bus_off_count`, `g_fdcan_recovery_count`,
+  `g_fdcan_recovery_attempt_count` and `g_fdcan_recovery_fail_count`.
+- **Valve-state stall.** If every `UMBILICAL_STATUS` submission has failed for
+  5 s, the router's queued transmit items are dropped (retained reliable
+  deliveries stay and retry), the CAN controller is restarted and discovery
+  and schema are announced again. This clears a missing route, an ordered
+  reliable entry pinned behind a queued copy, and a full reliable window. It
+  repeats at most every 5 s while failures continue. Counter:
+  `g_network_self_recovery_count`. Related probes:
+  `g_umbilical_status_attempts`, `g_umbilical_status_enqueue_failures` and
+  `g_umbilical_status_last_result`.
+
+The checks cannot fix reports that GroundStation receives and then refuses,
+for example because the board's clock is outside the station's acceptance
+window. GroundStation reports those in the `valve_reports` field of
+`/api/gse/status` and as a "valve state STALE" message.

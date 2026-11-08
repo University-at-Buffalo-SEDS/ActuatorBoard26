@@ -98,7 +98,8 @@ static void receive(const uint8_t *data, size_t len, void *user)
 
 int main(void)
 {
-    FDCAN_HandleTypeDef fdcan = {.State = HAL_FDCAN_STATE_READY};
+    static FDCAN_GlobalTypeDef regs;
+    FDCAN_HandleTypeDef fdcan = {.Instance = &regs, .State = HAL_FDCAN_STATE_READY};
     can_bus_init(&fdcan);
     assert(can_bus_subscribe_rx(receive, NULL) == HAL_OK);
     assert(can_bus_subscribe_rx(receive, NULL) == HAL_ERROR);

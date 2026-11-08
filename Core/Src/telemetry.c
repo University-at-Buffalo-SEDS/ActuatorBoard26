@@ -118,6 +118,13 @@ volatile uint32_t g_umbilical_status_attempts = 0U;
 volatile uint32_t g_umbilical_status_enqueue_failures = 0U;
 volatile uint32_t g_umbilical_status_last_payload = 0U;
 volatile int32_t g_umbilical_status_last_result = 0;
+/* Valve-state self-recovery. If every valve-state submission has failed for
+ * this long (no route, full ordered window, or CAN refusal) the network thread
+ * drops queued TX (retained reliable entries stay and retry), re-announces
+ * discovery/schema and restarts the CAN controller. Outputs are untouched. */
+#define TELEMETRY_STATUS_STALL_MS 5000U
+static volatile uint32_t g_umbilical_status_ok_ms;
+volatile uint32_t g_network_self_recovery_count = 0U;
 volatile uint32_t g_telemetry_queue_service_errors = 0U;
 volatile int32_t g_telemetry_queue_service_last_result = 0;
 
@@ -754,6 +761,22 @@ SedsResult telemetry_announce_discovery(void)
 }
 
 
+#ifdef TELEMETRY_ENABLED
+/* status-stall-service-begin */
+static void telemetry_status_stall_service(SedsRouter *router, uint32_t now_ms)
+{
+  if (g_umbilical_status_last_result == SEDS_OK ||
+      (uint32_t)(now_ms - g_umbilical_status_ok_ms) < TELEMETRY_STATUS_STALL_MS) return;
+  g_umbilical_status_ok_ms = now_ms;
+  ++g_network_self_recovery_count;
+  (void)seds_router_clear_tx_queue(router);
+  can_bus_request_restart();
+  g_discovery_schema_announced = 0U;
+  g_discovery_schema_retry_ms = 0ULL;
+}
+/* status-stall-service-end */
+#endif
+
 static SedsResult telemetry_poll_discovery_locked(void)
 {
 #ifdef TELEMETRY_ENABLED
@@ -772,10 +795,11 @@ static SedsResult telemetry_poll_discovery_locked(void)
   }
 
   bool did_queue = false;
+  const uint64_t now = tx_raw_now_ms_locked();
+  telemetry_status_stall_service(g_router.r, (uint32_t)now);
   /* Cadence polling advertises routes, not schema. Publish the complete local
    * catalog once after startup so existing relays learn newly added types.
    * Leave queue processing running between bounded retries on queue pressure. */
-  const uint64_t now = tx_raw_now_ms_locked();
   if (now >= g_discovery_schema_retry_ms) {
     if (!g_discovery_schema_announced) {
       g_discovery_schema_retry_ms = now + 1000ULL;
@@ -824,6 +848,7 @@ SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on)
       SEDS_DT_UMBILICAL_STATUS, payload, 2U, sizeof(payload[0]));
   g_umbilical_status_last_result = (int32_t)result;
   if (result != SEDS_OK) g_umbilical_status_enqueue_failures++;
+  else g_umbilical_status_ok_ms = (uint32_t)tx_raw_now_ms_locked();
   return result;
 #endif
 }
@@ -861,8 +886,6 @@ static SedsResult init_telemetry_router_locked(void)
     else
     {
       g_telemetry_init_error_code = TELEMETRY_INIT_SUBSCRIBE_RX_FAILED;
-      printf("Error %ld: can_bus_subscribe_rx failed\r\n",
-             (long)g_telemetry_init_error_code);
     }
   }
   static const SedsLocalEndpointDesc locals[] = {
@@ -910,8 +933,6 @@ static SedsResult init_telemetry_router_locked(void)
   if (!r)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_ROUTER_NEW_FAILED;
-    printf("Error %ld: failed to create router\r\n",
-           (long)g_telemetry_init_error_code);
     g_router.r = NULL;
     g_router.created = 0U;
     g_can_side_id = -1;
@@ -920,7 +941,6 @@ static SedsResult init_telemetry_router_locked(void)
 
   if (seds_router_set_preferred_discovery_master(r, "GS", 2U) != SEDS_OK)
   {
-    printf("Error: failed to prefer GroundStation discovery master\r\n");
     seds_router_free(r);
     return SEDS_ERR;
   }
@@ -936,8 +956,6 @@ static SedsResult init_telemetry_router_locked(void)
   if (g_can_side_id < 0)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_ADD_CAN_SIDE_FAILED;
-    printf("Error %ld: failed to add CAN side: %ld\r\n",
-           (long)g_telemetry_init_error_code, (long)g_can_side_id);
     g_can_side_id = -1;
   }
 
@@ -945,8 +963,6 @@ static SedsResult init_telemetry_router_locked(void)
   if (result != SEDS_OK)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_CONFIGURE_TIMESYNC_FAILED;
-    printf("Error %ld: failed to configure telemetry timesync: %d\r\n",
-           (long)g_telemetry_init_error_code, (int)result);
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;
@@ -958,8 +974,6 @@ static SedsResult init_telemetry_router_locked(void)
   if (result != SEDS_OK)
   {
     g_telemetry_init_error_code = TELEMETRY_INIT_OTA_FAILED;
-    printf("Error %ld: failed to bind OTA stream: %d\r\n",
-           (long)g_telemetry_init_error_code, (int)result);
     seds_router_free(r);
     g_router.r = NULL;
     g_router.created = 0U;

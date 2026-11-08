@@ -10,7 +10,9 @@ typedef struct { uint32_t output; uint32_t input; } GPIO_TypeDef;
 
 typedef enum { HAL_FDCAN_STATE_RESET=0, HAL_FDCAN_STATE_READY=1,
                HAL_FDCAN_STATE_BUSY=2, HAL_FDCAN_STATE_ERROR=3 } HAL_FDCAN_StateTypeDef;
-typedef struct { HAL_FDCAN_StateTypeDef State; } FDCAN_HandleTypeDef;
+typedef struct { uint32_t CCCR; } FDCAN_GlobalTypeDef;
+#define FDCAN_CCCR_INIT 0x1U
+typedef struct { FDCAN_GlobalTypeDef *Instance; HAL_FDCAN_StateTypeDef State; } FDCAN_HandleTypeDef;
 typedef struct { uint32_t BusOff; } FDCAN_ProtocolStatusTypeDef;
 typedef struct {
     uint32_t Identifier;

@@ -205,7 +205,16 @@ static uint8_t g_can_recovery_attempted;
 static uint32_t g_can_last_recovery_attempt_ms;
 volatile uint32_t g_fdcan_recovery_attempt_count;
 volatile uint32_t g_fdcan_recovery_fail_count;
+/* A controller that is not bus-off but cannot drain its 3-slot TX FIFO for
+ * this long (or that hardware has put back in INIT) is restarted like a
+ * bus-off. Frames take well under 1 ms each; outputs are never touched. */
+#define CAN_BUS_TX_STALL_MS 2000U
+static uint8_t g_can_tx_full;
+static uint32_t g_can_tx_full_since_ms;
+volatile uint32_t g_fdcan_tx_stall_count;
 static HAL_StatusTypeDef can_bus_configure_filters(FDCAN_HandleTypeDef *hfdcan);
+
+void can_bus_request_restart(void) { g_can_restart_pending = 1U; }
 
 static HAL_StatusTypeDef can_bus_recover_if_bus_off(void) {
   FDCAN_ProtocolStatusTypeDef protocol_status;
@@ -215,10 +224,23 @@ static HAL_StatusTypeDef can_bus_recover_if_bus_off(void) {
     g_can_recovering = 1U;
     return HAL_ERROR;
   }
+  const uint32_t now = HAL_GetTick();
+  if (g_hfdcan->State == HAL_FDCAN_STATE_BUSY) {
+    if ((g_hfdcan->Instance->CCCR & FDCAN_CCCR_INIT) != 0U) g_can_restart_pending = 1U;
+    if (HAL_FDCAN_GetTxFifoFreeLevel(g_hfdcan) != 0U) {
+      g_can_tx_full = 0U;
+    } else if (!g_can_tx_full) {
+      g_can_tx_full = 1U;
+      g_can_tx_full_since_ms = now;
+    } else if ((uint32_t)(now - g_can_tx_full_since_ms) >= CAN_BUS_TX_STALL_MS) {
+      g_can_tx_full = 0U;
+      g_can_restart_pending = 1U;
+      ++g_fdcan_tx_stall_count;
+    }
+  }
   if (protocol_status.BusOff == 0U && !g_can_restart_pending &&
       g_hfdcan->State == HAL_FDCAN_STATE_BUSY) return HAL_OK;
 
-  const uint32_t now = HAL_GetTick();
   if (g_can_recovery_attempted &&
       (uint32_t)(now - g_can_last_recovery_attempt_ms) < CAN_BUS_RECOVERY_RETRY_MS)
     return HAL_BUSY;

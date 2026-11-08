@@ -24,6 +24,8 @@ enum { SEDS_OK=0, SEDS_ERR=-1, SEDS_DT_UMBILICAL_STATUS=7, SEDS_EK_UNSIGNED=0 };
 uint32_t g_umbilical_status_attempts, g_umbilical_status_last_payload;
 uint32_t g_umbilical_status_enqueue_failures;
 int32_t g_umbilical_status_last_result;
+static volatile uint32_t g_umbilical_status_ok_ms;
+static uint64_t tx_raw_now_ms_locked(void) { return 4242; }
 typedef struct { uint32_t calls, accepted, failed, last_state, last_tick;
                  int32_t last_result; } ValveStatusDiagnostic;
 volatile ValveStatusDiagnostic g_valve_status_publish[7];
@@ -54,9 +56,13 @@ int main(void) {
         assert(telemetry_publish_umbilical_status(id,0)==SEDS_OK);
         assert(calls==2 && status_id==id && state==0);
     }
+    /* Success refreshes the stall-recovery timestamp; failure never does. */
+    assert(g_umbilical_status_ok_ms==4242);
+    g_umbilical_status_ok_ms=1;
     fail=1; calls=0;
     assert(telemetry_publish_umbilical_status(2,0)==SEDS_ERR);
     assert(calls>=1 && calls<=3);
+    assert(g_umbilical_status_ok_ms==1 && g_umbilical_status_last_result==SEDS_ERR);
 }
 """
         with tempfile.TemporaryDirectory() as tmp:

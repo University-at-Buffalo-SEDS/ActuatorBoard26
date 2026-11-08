@@ -44,6 +44,8 @@ static int daq_log_clock_poll(void *r) { (void)r;return 0; }
 static int flight_buzzer_poll(void *r) { (void)r;return 0; }
 static int av_bay_underglow_poll(void *r) { (void)r;return 0; }
 static void ota_stream_poll(void) {}
+static unsigned stall_checks;
+static void telemetry_status_stall_service(void *r, uint32_t t) { assert(r); (void)t; ++stall_checks; }
 static unsigned locked;
 static void telemetry_lock(void) {assert(!locked);++locked;}
 static void telemetry_unlock(void) {assert(locked==1);--locked;}
@@ -68,6 +70,8 @@ int main(void) {
  /* Successful router recreation resets bootstrap advertisement ownership. */
  g_discovery_schema_announced=0; g_discovery_schema_retry_ms=0;
  fail=SEDS_OK; telemetry_poll_discovery(); assert(attempts==4 && requests==0);
+ /* The valve-state stall check runs on every serviced poll. */
+ assert(stall_checks==polls);
 }
 
 '''
