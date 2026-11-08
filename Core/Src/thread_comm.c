@@ -921,7 +921,7 @@ int32_t board_recovery_snapshot(BoardRecoverySnapshot *out)
  * application and lets a fresh abort invalidate the expected epoch during NVM. */
 int32_t board_recovery_begin_prepare(uint8_t desired_state, uint32_t expected_epoch)
 {
-    if (desired_state > 1U || expected_epoch == 0U || expected_epoch == UINT32_MAX)
+    if (desired_state > BOARD_RECOVERY_MAX_STATE || expected_epoch == 0U || expected_epoch == UINT32_MAX)
         return -10;
     if (g_thread_comm_initialized == 0U ||
         tx_mutex_get(&g_thread_comm_state_mutex, TX_WAIT_FOREVER) != TX_SUCCESS) return -14;
@@ -969,7 +969,7 @@ void board_recovery_cancel_prepare(uint8_t desired_state, uint32_t expected_epoc
 int32_t board_recovery_apply_safe(uint8_t desired_state, uint32_t expected_abort_epoch,
                                 BoardRecoverySnapshot *out)
 {
-    if (out == 0 || desired_state > 1U || expected_abort_epoch == 0U ||
+    if (out == 0 || desired_state > BOARD_RECOVERY_MAX_STATE || expected_abort_epoch == 0U ||
         expected_abort_epoch == UINT32_MAX) return -10;
     if (g_thread_comm_initialized == 0U ||
         tx_mutex_get(&g_thread_comm_state_mutex, TX_WAIT_FOREVER) != TX_SUCCESS) return -14;
@@ -1177,7 +1177,7 @@ int32_t board_recovery_prepare_storage_only(uint32_t epoch) {
  bool released=bootstrap_state_release();return released?result:-14;
 }
 bool board_recovery_bind_bootstrap_request(uint64_t generation,uint32_t epoch,uint8_t desired,uint64_t issuer,uint64_t source) {
- if(!generation||generation==UINT64_MAX||!issuer||!source||source==UINT64_MAX||desired>1U||!epoch||epoch==UINT32_MAX)return false;
+ if(!generation||generation==UINT64_MAX||!issuer||!source||source==UINT64_MAX||desired>BOARD_RECOVERY_MAX_STATE||!epoch||epoch==UINT32_MAX)return false;
  if(!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_WAIT_FOREVER)!=TX_SUCCESS)return false;
  bool valid=persistent_store_bootstrap_pending()&&persistent_store_recovery_ready()&&g_bootstrap_complete&&
   !g_command_admission_fault&&!g_bootstrap_finalizing&&g_recovery_pending==2U&&g_recovery_expected_epoch==epoch&&g_recovery_desired==desired&&g_thread_comm_recovery_epoch==epoch;

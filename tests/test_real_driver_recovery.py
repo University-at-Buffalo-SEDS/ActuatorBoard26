@@ -104,6 +104,7 @@ UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;
             "timer_failure", "postwake_busy", "minimum_and_complete", "failure_recovery",
             "config_recovery", "failure_unsafe", "step_stuck", "timer_stuck", "stop_failure",
             "unknown_selector", "unready_selector", "exhausted_serial", "bootstrap_direct",
+            "resync_outputs_unchanged", "resync_unsafe_unchanged",
         ]
         with tempfile.TemporaryDirectory(prefix="real-driver-recovery-") as directory:
             work = Path(directory)

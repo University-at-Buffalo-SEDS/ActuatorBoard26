@@ -42,7 +42,8 @@ static stepper_t stepper={.step_port=&ports[5],.step_pin=1,.dir_port=&ports[6],.
 #define CMD_RETRACT_PLUMBING 8
 #define PLUMBING_RETRACT_STEPS 20000000U
 #define PLUMBING_RETRACT_STEP_PERIOD_US 30U
-void HAL_GPIO_WritePin(GPIO_TypeDef*p,uint16_t pin,unsigned value){if(value)p->ODR|=pin;else{if((p==stepper.sleep_port&&stuck_sleep)||(p==stepper.step_port&&stuck_step))p->ODR|=pin;else p->ODR&=~pin;if(p==stepper.sleep_port)sleeps++;}}
+static unsigned gpio_writes;
+void HAL_GPIO_WritePin(GPIO_TypeDef*p,uint16_t pin,unsigned value){gpio_writes++;if(value)p->ODR|=pin;else{if((p==stepper.sleep_port&&stuck_sleep)||(p==stepper.step_port&&stuck_step))p->ODR|=pin;else p->ODR&=~pin;if(p==stepper.sleep_port)sleeps++;}}
 void HAL_GPIO_Init(GPIO_TypeDef*p,GPIO_InitTypeDef*config){assert(p==stepper.step_port&&config->Pin==stepper.step_pin);}
 void HAL_Delay(uint32_t ms){assert(ms==SLEEP_WAKE_MS&&!g_thread_comm_state_mutex.locked);wakes++;if(wake_interleave){void(*hook)(void)=wake_interleave;wake_interleave=0;hook();}}
 void fake_timer_disable(TIM_HandleTypeDef*h){if(stuck_timer)h->Instance->CR1|=TIM_CR1_CEN;else h->Instance->CR1&=~TIM_CR1_CEN;}
@@ -87,6 +88,19 @@ int main(int argc,char**argv){
  else if(!strcmp(argv[1],"bootstrap_direct")){
  fail_start=true;start_plumbing_retract(10000,thread_comm_manual_epoch());assert(g_fill_drive_fault);g_thread_comm_state_mutex.locked=1;assert(bootstrap_stop_owner());g_thread_comm_state_mutex.locked=0;
  assert(g_fill_drive_fault&&g_aborted&&!pulses_started&&snapshot().lifecycle==FILL_PROVENANCE_FAULT&&g_fill_provenance.lifecycle!=FILL_PROVENANCE_COMPLETED);
+ }
+
+ else if(!strcmp(argv[1],"resync_outputs_unchanged")||!strcmp(argv[1],"resync_unsafe_unchanged")){
+ /* RESYNC to NitrousFill through the actual owner callbacks: the state machine
+  * and epoch move, no output register is written or changed. */
+ stop_in_wake();bool unsafe=!strcmp(argv[1],"resync_unsafe_unchanged");if(unsafe)ports[10].ODR=1;
+ BoardRecoverySnapshot b;assert(board_recovery_snapshot(&b)==0);uint32_t before=b.abort_epoch;uint8_t state=b.actual_state;
+ GPIO_TypeDef saved[14];memcpy(saved,ports,sizeof saved);TIM_TypeDef timer=fake_tim1;unsigned writes=gpio_writes;
+ assert(board_recovery_begin_prepare(5,before)==0);assert(board_recovery_apply_safe(5,before,&b)==-14);board_recovery_execute_owned();
+ assert(!memcmp(saved,ports,sizeof saved)&&!memcmp(&timer,&fake_tim1,sizeof timer)&&gpio_writes==writes&&!pulses_started);
+ assert(board_recovery_snapshot(&b)==0);
+ if(unsafe){assert(thread_comm_get_abort()&&abort_latch&&b.abort_epoch==before&&b.actual_state==state&&ports[10].ODR==1);ports[10].ODR=0;}
+ else assert(!thread_comm_get_abort()&&!abort_latch&&b.abort_epoch==before+1U&&b.actual_state==5&&thread_comm_get_flight_state()==5);
  }
 
 #ifdef TEST_REAL_MUTEX

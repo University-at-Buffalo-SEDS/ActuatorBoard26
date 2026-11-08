@@ -473,7 +473,9 @@ static void recovery_finish_base(void)
  * the base cleanup directly and must never rearm a plumbing fault. */
 static uint8_t recovery_prepare_outputs(uint8_t desired)
 {
-    if (!recovery_prepare_base(desired) || stepperRecoverAsleep(&stepper) != STEP_OK)
+    /* A RESYNC phase target (>Idle) writes nothing; the stepper must already
+     * read stopped and asleep below. */
+    if (!recovery_prepare_base(desired) || (desired <= 1U && stepperRecoverAsleep(&stepper) != STEP_OK))
         return 0U;
     uint32_t mask = UINT32_MAX;
     const uint8_t required = BOARD_RECOVERY_OUTPUTS_VALID | BOARD_RECOVERY_SAFE_OUTPUTS;
