@@ -116,6 +116,8 @@ static volatile uint32_t safety_heartbeat_timeout_count;
 static volatile uint32_t safety_adc_start_error_count;
 static volatile HAL_StatusTypeDef safety_adc_start_status = HAL_OK;
 static volatile uint32_t safety_adc_start_step;
+volatile uint32_t g_safety_adc_start_failures;
+volatile uint8_t g_safety_adc_warning_pending;
 static volatile uint32_t safety_adc_start_hal_state;
 static volatile uint32_t safety_adc_start_hal_error;
 static volatile HAL_DMA_StateTypeDef safety_adc_start_dma_state;
@@ -389,18 +391,10 @@ void safety_task_entry(ULONG initial_input)
          * safety evaluation and failure Abort paths retain their own gate. */
         if (safety_adc_start() != TX_SUCCESS)
         {
-            if (thread_comm_abort_allowed() == 0U) {
-                tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
-                continue;
-            }
-            const uint64_t failure_ms = safety_now_ms();
-            const uint64_t heartbeat_ms = thread_comm_get_groundstation_heartbeat_ms();
-            const uint8_t flight_state = thread_comm_get_flight_state();
-            const uint64_t origin_utc = telemetry_event_clock_snapshot();
-            if (thread_comm_request_local_abort(SAFETY_ABORT_ADC_START, failure_ms, heartbeat_ms, flight_state, safety_adc_start_step, origin_utc, 0U)) {
-                /* Retained Abort is consumed by the control owner; do not
-                 * mutate a later recovered sequence from this producer. */
-            }
+            /* An ADC start failure is a diagnostic, not a safety condition:
+             * report a warning and retry. Aborts are for safety only. */
+            g_safety_adc_start_failures++;
+            g_safety_adc_warning_pending = 1U;
             tx_thread_sleep(SAFETY_CHECK_PERIOD_TICKS);
             continue;
         }

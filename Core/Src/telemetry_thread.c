@@ -68,6 +68,23 @@ static void telemetry_disabled_command_cycle(void)
 /* Network-thread reporting keeps allocation and transport out of safety checks.
  * Retry only the current owner cause once per second; received Abort never echoes.
  * A lease spans SDK retain with no state lock and is drained before recovery. */
+extern volatile uint8_t g_safety_adc_warning_pending;
+/* Rate-limited operator warning for a failed safety-ADC start (never an Abort). */
+static void telemetry_report_adc_warning(void)
+{
+    static ULONG last_sent;
+    static uint8_t sent_once;
+    const ULONG now = tx_time_get();
+    if (!g_safety_adc_warning_pending ||
+        (sent_once && (ULONG)(now - last_sent) < 10U * TX_TIMER_TICKS_PER_SECOND)) return;
+    if (log_telemetry_string_asynchronous(SEDS_DT_WARNING,
+            "Actuator Board safety ADC failed to start; continuity sensing unavailable, retrying") == SEDS_OK) {
+        g_safety_adc_warning_pending = 0U;
+        last_sent = now;
+        sent_once = 1U;
+    }
+}
+
 static void telemetry_report_safety_abort(void)
 {
     static uint8_t attempted;
@@ -130,6 +147,7 @@ void telemetry_thread_entry(ULONG initial_input)
         ota_stream_poll();
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_SERVICE_BUDGET_MS);
         telemetry_report_safety_abort();
+        telemetry_report_adc_warning();
         sample_telemetry_stack();
         tx_thread_sleep(1);
     }

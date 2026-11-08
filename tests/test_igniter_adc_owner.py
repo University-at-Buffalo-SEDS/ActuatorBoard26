@@ -90,7 +90,7 @@ int main(int argc,char**argv){assert(argc==2);unsigned scenario=(unsigned)strtou
   assert(starts==1&&heartbeat_calls==1&&temps==1&&adc2.CR==0xfeed);
   if(scenario==3)assert(captures==1&&processes==1&&!abort_requests);
   if(scenario==4)assert(captures==1&&!processes&&!abort_requests);
-  if(scenario==5)assert(!captures&&!processes&&abort_requests==1);
+  if(scenario==5)assert(!captures&&!processes&&!abort_requests&&g_safety_adc_warning_pending); /* start failure warns, never aborts */
   if(scenario==6||scenario==7)assert(!captures&&!processes&&!abort_requests);
   if(scenario==8)assert(captures==1&&!processes&&!abort_requests);
   return 0;}
@@ -120,7 +120,7 @@ class AdcOwnership(unittest.TestCase):
   with tempfile.TemporaryDirectory()as d:
    for label,flags in [('native',[]),('sanitized',['-fsanitize=address,undefined','-fno-omit-frame-pointer'])]:
     exe=Path(d)/label
-    subprocess.run(['cc','-std=c11','-O1','-Wall','-Wextra','-Werror','-Wno-unused-variable','-Wno-unused-parameter',*flags,'-I',str(ROOT/'Core/Inc'),'-x','c','-','-o',str(exe)],input=program,text=True,check=True)
+    subprocess.run(['cc','-std=c11','-O1','-Wall','-Wextra','-Werror','-Wno-unused-variable','-Wno-unused-parameter','-Wno-unused-function',*flags,'-I',str(ROOT/'Core/Inc'),'-x','c','-','-o',str(exe)],input=program,text=True,check=True)
     env=os.environ.copy();env['ASAN_OPTIONS']='detect_leaks=1:abort_on_error=1';env['UBSAN_OPTIONS']='halt_on_error=1'
     for scenario in range(12):subprocess.run([str(exe),str(scenario)],check=True,env=env)
  def test_actual_hal_stop_is_bounded_and_does_not_reset_adc2(self):

@@ -32,7 +32,8 @@ static uint32_t g_plumbing_retract_steps_remaining;
 static ULONG g_launch_sequence_igniter_start_ticks,g_launch_sequence_igniter_stop_ticks;
 static unsigned gpio_writes,writes_when_relaunched,recoveries,interleave=1;
 static uint64_t now_ms,safety_heartbeat_missing_since_ms;
-static uint32_t safety_heartbeat_timeout_count,safety_adc_start_step=2;
+static uint32_t safety_heartbeat_timeout_count;
+static volatile uint32_t g_safety_adc_start_failures;static volatile uint8_t g_safety_adc_warning_pending;
 typedef struct{uint32_t ODR;}Port;static Port ports[11];static int stepper;
 #define GPIO_PIN_RESET 0
 #define GPIO_PIN_SET 1
@@ -107,11 +108,18 @@ int main(int argc,char**argv){
  }
  if(!strcmp(argv[1],"heartbeat")){now_ms=5100;assert(thread_comm_note_groundstation_heartbeat(100)==0);safety_check_heartbeat();}
  else if(!strcmp(argv[1],"initial_heartbeat")){now_ms=5100;safety_heartbeat_missing_since_ms=100;safety_check_heartbeat();}
- else if(!strcmp(argv[1],"adc_start")){now_ms=100;adc_failure_once();}
+ else if(!strcmp(argv[1],"adc_start")){
+  /* ADC start failure is only a warning: no Abort, no recovery race. */
+  now_ms=100;adc_failure_once();
+  assert(!thread_comm_get_abort()&&recoveries==0);
+  assert(g_safety_adc_warning_pending==1U&&g_safety_adc_start_failures==1U);
+  assert(g_safety_first_abort.reason!=SAFETY_ABORT_ADC_START);
+  return 0;
+ }
  else assert(0);
  assert(recoveries==1&&finished==1);assert(!thread_comm_get_abort());
  assert(g_launch_sequence_active&&ports[0].ODR==1&&gpio_writes==writes_when_relaunched);
- assert(g_safety_first_abort.reason==(!strcmp(argv[1],"heartbeat")?SAFETY_ABORT_HEARTBEAT:!strcmp(argv[1],"initial_heartbeat")?SAFETY_ABORT_INITIAL_HEARTBEAT:SAFETY_ABORT_ADC_START));
+ assert(g_safety_first_abort.reason==(!strcmp(argv[1],"heartbeat")?SAFETY_ABORT_HEARTBEAT:SAFETY_ABORT_INITIAL_HEARTBEAT));
  /* A genuinely NEW manual Stop after Launch still acts through this owner. */
  assert(thread_comm_request_manual_abort()==TX_SUCCESS);assert(thread_comm_get_abort());owner_abort_pass();assert(!g_launch_sequence_active&&!ports[0].ODR);
  return 0;
