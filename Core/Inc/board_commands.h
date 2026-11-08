@@ -10,4 +10,6 @@ enum actuator_commands {
     CMD_NITROUS_CLOSE = 13,
     CMD_IGNITER_SEQUENCE = 14,
     CMD_EXTEND_PLUMBING = 15,
+    /* Automatic-tagged only: VB or GS tank overpressure (850/950 psi). */
+    CMD_OVERPRESSURE_ABORT = 16,
 };

@@ -38,7 +38,7 @@ class HeartbeatOwnerTests(unittest.TestCase):
    if(!strcmp(argv[1],"fill_to_launch"))interleave=2;
    if(!strcmp(argv[1],"manual_stop"))interleave=3;
    if(!strcmp(argv[1],"launch_latched"))board_launch_latch_set();
-   if(!strcmp(argv[1],"generic_idle")){assert(thread_comm_set_flight_state(STATE_FLIGHT_STATE_IDLE)==0);assert(thread_comm_request_automatic_abort()==1&&thread_comm_get_abort());return 0;}
+   if(!strcmp(argv[1],"generic_idle")){assert(thread_comm_set_flight_state(STATE_FLIGHT_STATE_IDLE)==0);assert(thread_comm_request_automatic_abort(0U)==1&&thread_comm_get_abort());return 0;}
    if(!strcmp(argv[1],"manual_idle")){assert(thread_comm_set_flight_state(STATE_FLIGHT_STATE_IDLE)==0);assert(thread_comm_request_manual_abort()==0&&thread_comm_get_abort());return 0;}
    safety_check_heartbeat();
    if(!strcmp(argv[1],"active")){assert(thread_comm_get_abort()&&g_safety_first_abort.reason==SAFETY_ABORT_HEARTBEAT&&g_safety_first_abort.original_network_utc==9000&&clock_reads==1);}

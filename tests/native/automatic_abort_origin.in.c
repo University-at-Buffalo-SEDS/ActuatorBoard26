@@ -82,7 +82,7 @@ int main(int argc,char**argv){assert(argc==2);const char*test=argv[1];
  if(!strcmp(test,"expired"))now+=1001;
  if(!strcmp(test,"rollback"))telemetry_event_clock_observe(origin-1,(uint32_t)now);
  uint64_t captured_origin=telemetry_event_clock_snapshot();
- g_thread_comm_flight_state=2;assert(thread_comm_request_automatic_abort()==1&&g_thread_comm_abort);
+ g_thread_comm_flight_state=2;assert(thread_comm_request_automatic_abort(0U)==1&&g_thread_comm_abort);
  safety_record_first_abort(SAFETY_ABORT_HEARTBEAT,900,0,2,0,0,captured_origin);
  assert(g_safety_first_abort.original_network_utc==captured_origin);
  /* First-cause storage remains immutable, including its origin. */

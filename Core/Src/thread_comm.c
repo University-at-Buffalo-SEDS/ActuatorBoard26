@@ -452,7 +452,7 @@ UINT thread_comm_receive(thread_comm_msg_t *msg, ULONG wait_option)
 
 /* Only automatic producers use this atomic admission decision. Manual Abort
  * remains unconditional, and ordinary state rollback cannot clear launch. */
-uint8_t thread_comm_request_automatic_abort(void)
+uint8_t thread_comm_request_automatic_abort(uint8_t overpressure)
 {
     uint8_t claimed = 0U;
     if (g_thread_comm_initialized == 0U ||
@@ -460,7 +460,7 @@ uint8_t thread_comm_request_automatic_abort(void)
         return 0U;
     }
     if (g_safety_report_closing == 0U && board_launch_latch_is_set() == 0U && g_thread_comm_abort == 0U &&
-        g_thread_comm_flight_state > ACTUATOR_FLIGHT_STATE_STARTUP &&
+        (overpressure || g_thread_comm_flight_state > ACTUATOR_FLIGHT_STATE_STARTUP) &&
         g_thread_comm_flight_state < ACTUATOR_FLIGHT_STATE_LAUNCH) {
         thread_comm_latch_abort_locked(0U);
         claimed = 1U;

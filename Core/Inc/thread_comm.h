@@ -153,7 +153,8 @@ UINT thread_comm_set_flight_state(uint8_t flight_state);
 UINT thread_comm_apply_managed_flight_state(uint8_t flight_state);
 uint8_t thread_comm_get_flight_state(void);
 uint8_t thread_comm_abort_allowed(void);
-uint8_t thread_comm_request_automatic_abort(void);
+/* Overpressure is also admitted in Startup; never after Launch. */
+uint8_t thread_comm_request_automatic_abort(uint8_t overpressure);
 /* Owner-tagged finite local report. A lease is immutable through SDK return.
  * No state mutex or IRQ mask is held by the caller during SDK enqueue. */
 typedef struct {

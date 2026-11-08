@@ -262,6 +262,11 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   if (pkt->payload_len != 1U) return SEDS_BAD_ARG;
   if ((cmd_u8 & THREAD_COMM_AUTOMATIC_TAG) != 0U) {
     const uint8_t command = cmd_u8 & (uint8_t)~THREAD_COMM_AUTOMATIC_TAG;
+    /* Tank overpressure: the existing Abort safe state, before Launch only. */
+    if (command == CMD_OVERPRESSURE_ABORT) {
+      (void)thread_comm_request_automatic_abort(1U);
+      return SEDS_OK;
+    }
     if (!(command == CMD_NITROGEN_OPEN || command == CMD_NITROUS_OPEN ||
           command == CMD_NITROGEN_CLOSE || command == CMD_NITROUS_CLOSE)) return SEDS_BAD_ARG;
     const thread_comm_msg_t automatic_msg = {.cmd = command, .timestamp_ms = pkt->timestamp};
@@ -296,12 +301,16 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
   if (pkt != NULL && pkt->ty != SEDS_DT_ABORT) return SEDS_OK;
   /* Preserve operator Abort, but identify delayed automatic requests so an
    * old prelaunch retry cannot terminate a subsequently admitted launch. */
-  static const char automatic_prefix[] = "SEDS_AUTO_ABORT_V1:";
+  /* The VB's tank overpressure report also aborts in Startup. */
+  static const char automatic_prefix[] = "SEDS_AUTO_ABORT_V1:tank overpressure";
+  enum { PREFIX = sizeof "SEDS_AUTO_ABORT_V1:" - 1U };
   if (pkt != NULL && pkt->payload != NULL &&
-      pkt->payload_len >= sizeof(automatic_prefix) - 1U &&
-      memcmp(pkt->payload, automatic_prefix, sizeof(automatic_prefix) - 1U) == 0) {
+      pkt->payload_len >= PREFIX &&
+      memcmp(pkt->payload, automatic_prefix, PREFIX) == 0) {
     if (board_recovery_automatic_is_stale(pkt)) return SEDS_OK;
-    (void)thread_comm_request_automatic_abort();
+    (void)thread_comm_request_automatic_abort(
+        pkt->payload_len >= sizeof(automatic_prefix) - 1U &&
+        memcmp(pkt->payload, automatic_prefix, sizeof(automatic_prefix) - 1U) == 0);
     return SEDS_OK;
   }
 

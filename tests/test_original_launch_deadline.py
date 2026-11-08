@@ -65,7 +65,7 @@ TAKE
  storage_ready=false;test_tamp.BKP28R=test_tamp.BKP29R=0;drop_launch=1;
  assert(thread_comm_launch_effect_owned(&owner,continuation_effect,0)&&effects==2U);
  assert(g_accepted_launch.deadline==expected&&!thread_comm_get_abort());
- assert(!thread_comm_request_automatic_abort());
+ assert(!thread_comm_request_automatic_abort(0U));
  assert(thread_comm_request_manual_abort()==TX_SUCCESS&&thread_comm_get_abort());
  assert(!thread_comm_launch_effect_owned(&owner,continuation_effect,0)&&effects==2U);
  return 0;

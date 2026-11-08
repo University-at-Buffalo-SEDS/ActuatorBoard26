@@ -75,8 +75,8 @@ int main(int argc,char**argv){
  assert(argc==3);const char*scenario=argv[1];
  if(!strcmp(scenario,"reboot_bad")||!strcmp(scenario,"reboot_good"))load(argv[2]);
  board_abort_latch_init();TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==0);
- if(!strcmp(scenario,"reboot_bad")){assert(thread_comm_get_abort());assert(launch_request()!=TX_SUCCESS);assert(thread_comm_request_automatic_abort()==0);return 0;}
- if(!strcmp(scenario,"reboot_good")){assert(board_launch_latch_is_set()&&!thread_comm_get_abort());assert(thread_comm_set_flight_state(6)==0);assert(thread_comm_request_automatic_abort()==0);manual_stop();assert(thread_comm_get_abort());return 0;}
+ if(!strcmp(scenario,"reboot_bad")){assert(thread_comm_get_abort());assert(launch_request()!=TX_SUCCESS);assert(thread_comm_request_automatic_abort(0U)==0);return 0;}
+ if(!strcmp(scenario,"reboot_good")){assert(board_launch_latch_is_set()&&!thread_comm_get_abort());assert(thread_comm_set_flight_state(6)==0);assert(thread_comm_request_automatic_abort(0U)==0);manual_stop();assert(thread_comm_get_abort());return 0;}
  assert(!thread_comm_get_abort());assert(thread_comm_set_flight_state(6)==0);
  if(!strcmp(scenario,"request_bad")){
   drop_launch=1;assert(launch_request()!=TX_SUCCESS);assert(thread_comm_get_abort()&&board_launch_latch_is_set());assert(test_tamp.BKP30R||test_tamp.BKP31R);

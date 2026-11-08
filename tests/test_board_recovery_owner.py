@@ -116,7 +116,7 @@ int main(void){
  assert(thread_comm_request_manual_abort()==TX_SUCCESS);board_recovery_execute_owned();
  assert(board_recovery_snapshot(&status)==0&&status.abort_epoch==10&&(status.flags&BOARD_RECOVERY_ABORT_LATCHED));
  assert(thread_comm_set_abort(1)==TX_SUCCESS);assert(thread_comm_set_abort(1)==TX_SUCCESS);
- assert(thread_comm_request_automatic_abort()==0);assert(board_recovery_snapshot(&status)==0&&status.abort_epoch==10);
+ assert(thread_comm_request_automatic_abort(0U)==0);assert(board_recovery_snapshot(&status)==0&&status.abort_epoch==10);
  g_thread_comm_recovery_epoch=UINT32_MAX;assert(thread_comm_request_manual_abort()==0);assert(board_recovery_snapshot(&status)==0&&status.abort_epoch==0&&!(status.flags&BOARD_RECOVERY_SUPPORTED));
  return 0;
 }

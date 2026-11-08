@@ -44,7 +44,7 @@ typedef struct{uint32_t ODR;}Port;static Port ports[11];static int stepper;
 #define CMD_IGNITER_ON 6
 PORTS
 static void HAL_GPIO_WritePin(Port*p,unsigned pin,unsigned value){gpio_writes++;if(value)p->ODR|=pin;else p->ODR&=~pin;}
-static void stepperSleep(int*p){(void)p;}
+static unsigned stepper_sleeps;static void stepperSleep(int*p){(void)p;stepper_sleeps++;}
 /* This late-producer fixture exercises the real finish callbacks with a
  * conservatively unready selector. Actual driver rearm is tested separately. */
 static uint32_t g_fill_start_serial;
@@ -90,6 +90,21 @@ int main(int argc,char**argv){
  assert(argc==2);TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==0);board_recovery_bind_owner(read_outputs,prepare,finish);
  assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_PREFILL)==TX_SUCCESS);
  if(!strcmp(argv[1],"fresh_prelaunch")){interleave=0;ports[0].ODR=1;g_igniter_on=1;now_ms=5100;assert(thread_comm_note_groundstation_heartbeat(100)==0);safety_check_heartbeat();assert(thread_comm_get_abort());unsigned before_owner=gpio_writes;owner_abort_pass();assert(gpio_writes>before_owner&&!ports[0].ODR&&!g_igniter_on&&!g_launch_sequence_active&&g_safety_first_abort.reason==SAFETY_ABORT_HEARTBEAT);return 0;}
+ if(!strcmp(argv[1],"overpressure_motion")){
+  /* Overpressure in Startup with retraction mid-motion and every output on. */
+  interleave=0;assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_STARTUP)==TX_SUCCESS);
+  for(unsigned i=0;i<11;i++)ports[i].ODR=1;
+  g_igniter_on=g_nitrogen_open=g_nitrous_open=1;g_launch_sequence_active=0;
+  g_plumbing_retract_active=1;g_plumbing_retract_steps_remaining=500;
+  g_fill_motion.active=true;g_fill_motion.active_action=1;
+  assert(thread_comm_request_automatic_abort(0U)==0&&!thread_comm_get_abort()); /* generic: Startup excluded */
+  assert(thread_comm_request_automatic_abort(1U)==1&&thread_comm_get_abort());
+  owner_abort_pass();
+  for(unsigned i=0;i<11;i++)if(i!=6)assert(!ports[i].ODR);
+  assert(stepper_sleeps>=1&&!g_plumbing_retract_active&&!g_plumbing_retract_steps_remaining&&!g_fill_motion.active);
+  assert(!g_igniter_on&&!g_nitrogen_open&&!g_nitrous_open&&!g_launch_sequence_active);
+  return 0;
+ }
  if(!strcmp(argv[1],"heartbeat")){now_ms=5100;assert(thread_comm_note_groundstation_heartbeat(100)==0);safety_check_heartbeat();}
  else if(!strcmp(argv[1],"initial_heartbeat")){now_ms=5100;safety_heartbeat_missing_since_ms=100;safety_check_heartbeat();}
  else if(!strcmp(argv[1],"adc_start")){now_ms=100;adc_failure_once();}
@@ -111,6 +126,6 @@ int main(int argc,char**argv){
   with tempfile.TemporaryDirectory(prefix='safety-owner-race-')as tmp:
    p=Path(tmp);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);binary=p/'test'
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),str(p/'test.c'),'-o',str(binary)],check=True)
-   for case in ['heartbeat','initial_heartbeat','adc_start','fresh_prelaunch']:
+   for case in ['heartbeat','initial_heartbeat','adc_start','fresh_prelaunch','overpressure_motion']:
     with self.subTest(case=case):subprocess.run([str(binary),case],check=True)
 if __name__=='__main__':unittest.main()

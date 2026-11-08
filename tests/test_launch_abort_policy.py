@@ -120,7 +120,7 @@ static void reboot_cpu(void){
  latched=launch_latched=backup_ready=0;board_abort_latch_init();
  g_thread_comm_initialized=0;TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==TX_SUCCESS);
 }
-static void try_automatic_effect(void){if(thread_comm_request_automatic_abort())claimed_effects++;}
+static void try_automatic_effect(void){if(thread_comm_request_automatic_abort(AUTO_ARG))claimed_effects++;}
 static void launch_before_claim(void){assert(thread_comm_set_flight_state(STATE_LAUNCH)==TX_SUCCESS);}
 static UINT launch_request(void){LAUNCH_REQUEST}
 int main(void){
@@ -201,6 +201,7 @@ int main(void){
   const unsigned raw=wire&127U;
   const unsigned supported=AUTO_ALLOWED;
   const int result=Valve_Command_handler(&pkt,0);
+  OVERPRESSURE_WIRE
   assert(result==(supported?SEDS_OK:SEDS_BAD_ARG));
   if(supported){
    assert(thread_comm_receive(&received,TX_NO_WAIT)==TX_SUCCESS);
@@ -222,11 +223,38 @@ int main(void){
  for(unsigned i=0;i<THREAD_COMM_QUEUE_DEPTH;i++){thread_comm_msg_t msg={.cmd=1,.timestamp_ms=i};assert(thread_comm_send(msg,TX_NO_WAIT)==TX_SUCCESS);}
  assert(launch_request()!=TX_SUCCESS&&board_launch_latch_is_set());
  try_automatic_effect();assert(!claimed_effects&&!thread_comm_get_abort());
+
+ /* Overpressure (VB 850/950 command or GS): Abort before Launch, Startup included. */
+ const uint8_t over_cmd[1]={CMD_OVERPRESSURE_ABORT|THREAD_COMM_AUTOMATIC_TAG};
+ const uint8_t over_report[]="SEDS_AUTO_ABORT_V1:tank overpressure";
+ const uint8_t generic_report[]="SEDS_AUTO_ABORT_V1:heartbeat timeout";
+ for(unsigned phase=0;phase<=ACTUATOR_FLIGHT_STATE_ABORTED;phase++)for(unsigned wire=0;wire<2;wire++){
+  reset_power();assert(thread_comm_set_flight_state((uint8_t)phase)==TX_SUCCESS);
+  SedsPacketView op=wire?(SedsPacketView){.ty=SEDS_DT_ABORT,.payload=over_report,.payload_len=sizeof over_report-1,.timestamp=1234}
+                        :(SedsPacketView){.ty=SEDS_DT_ACTUATOR_COMMAND,.payload=over_cmd,.payload_len=1,.timestamp=1234};
+  assert((wire?Abort_handler(&op,0):Valve_Command_handler(&op,0))==SEDS_OK);
+  assert(thread_comm_get_abort()==(phase<ACTUATOR_FLIGHT_STATE_LAUNCH));
+  thread_comm_msg_t none;assert(thread_comm_receive(&none,TX_NO_WAIT)!=TX_SUCCESS);
+ }
+ /* Other automatic reports keep the Startup exclusion. */
+ reset_power();
+ {SedsPacketView op={.ty=SEDS_DT_ABORT,.payload=generic_report,.payload_len=sizeof generic_report-1,.timestamp=1234};
+  assert(Abort_handler(&op,0)==SEDS_OK&&!thread_comm_get_abort());}
+ /* The retained launch latch excludes it even if the network state rolls back. */
+ reset_power();assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_ARMED)==TX_SUCCESS);
+ assert(launch_request()==TX_SUCCESS&&board_launch_latch_is_set());
+ assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_STARTUP)==TX_SUCCESS);
+ {SedsPacketView op={.ty=SEDS_DT_ACTUATOR_COMMAND,.payload=over_cmd,.payload_len=1,.timestamp=1234};
+  assert(Valve_Command_handler(&op,0)==SEDS_OK&&!thread_comm_get_abort());
+  op=(SedsPacketView){.ty=SEDS_DT_ABORT,.payload=over_report,.payload_len=sizeof over_report-1,.timestamp=1234};
+  assert(Abort_handler(&op,0)==SEDS_OK&&!thread_comm_get_abort());}
 ''' if ab else r'''
  uint64_t timestamp=0;assert(thread_comm_take_launch_sequence_request(&timestamp)&&timestamp==42);
  assert(!thread_comm_take_launch_sequence_request(&timestamp));
 '''
         code=code.replace('LAUNCH_REQUEST',request).replace('EXTRA',extra)
+        code=code.replace('AUTO_ARG','0U' if ab else '')
+        code=code.replace('OVERPRESSURE_WIRE',r'''if(raw==CMD_OVERPRESSURE_ABORT){assert(result==SEDS_OK&&thread_comm_get_abort()&&thread_comm_receive(&received,TX_NO_WAIT)!=TX_SUCCESS);continue;}''' if ab else '')
         code=code.replace('AUTO_ALLOWED','raw==9U||raw==10U||raw==12U||raw==13U' if ab else 'raw<=5U')
         code=code.replace('AUTO_CMD','CMD_NITROGEN_CLOSE' if ab else 'CMD_PILOT_CLOSE').replace('BAD_AUTO','CMD_IGNITER_SEQUENCE' if ab else 'CMD_SEQUENCE')
         code=code.replace('CHECK_RECEIVED','assert((received.cmd & ~THREAD_COMM_AUTOMATIC_TAG)==CMD_NITROGEN_CLOSE && received.timestamp_ms==1234);' if ab else 'assert((received & ~THREAD_COMM_AUTOMATIC_TAG)==CMD_PILOT_CLOSE);')
