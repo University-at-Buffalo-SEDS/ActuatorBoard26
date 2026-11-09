@@ -114,6 +114,17 @@ volatile int32_t g_telemetry_rx_last_error = SEDS_OK;
 volatile uint32_t g_telemetry_timesync_poll_errors = 0U;
 /* Network clock restarts after it disagreed with the station clock by >60 s. */
 volatile uint32_t g_network_clock_resyncs = 0U;
+/* A restart cannot fix a source that disagrees with the GS; repeating it on
+ * every GS packet kept the clock torn down. Monotonic ticks pace it. */
+#define NETWORK_CLOCK_RESYNC_HOLDOFF_TICKS (30U * (ULONG)TX_TIMER_TICKS_PER_SECOND)
+static ULONG g_network_clock_resync_tick;
+/* Latest GS heartbeat time (the station's own network clock) and its receipt
+ * tick, under the router lock. Unlike the forward-only recovery station
+ * clock it follows a GS clock step in either direction. */
+#define STATION_REPORT_REFERENCE_TICKS (30U * (ULONG)TX_TIMER_TICKS_PER_SECOND)
+#define STATION_REPORT_AGREEMENT_MS 2000U
+static uint64_t g_station_report_utc;
+static ULONG g_station_report_tick;
 /* Read-only ST-Link probes distinguish command execution, enqueue rejection,
  * and queue service errors without adding traffic to a failing return path. */
 volatile uint32_t g_umbilical_status_attempts = 0U;
@@ -389,6 +400,12 @@ SedsResult Heartbeat_handler(const SedsPacketView *pkt, void *user)
   (void)user;
   /* GS heartbeats keep the recovery freshness clock current, also in Abort. */
   if (pkt != NULL) board_recovery_observe_station_time(g_router.r, pkt);
+  if (pkt != NULL && pkt->ty == SEDS_DT_HEARTBEAT && pkt->timestamp != 0U &&
+      pkt->timestamp != UINT64_MAX && ground_heartbeat_owner_matches(pkt->sender, pkt->sender_len))
+  {
+    g_station_report_utc = pkt->timestamp;
+    g_station_report_tick = tx_time_get();
+  }
 
   if (thread_comm_get_abort() != 0U)
   {
@@ -692,18 +709,22 @@ static UNUSED_FUNCTION void rx_synchronous(const uint8_t *bytes, size_t len)
 static void telemetry_update_network_health(SedsRouter *router)
 {
   uint64_t network_time_ms = 0ULL;
+  const ULONG now_ticks = tx_time_get();
   if (seds_router_get_network_time_ms(router, &network_time_ms) == SEDS_OK)
   {
     g_telemetry_timesync_valid = 1U;
-    if (board_recovery_network_clock_resync_needed(network_time_ms) &&
+    if ((g_network_clock_resyncs == 0U ||
+         (ULONG)(now_ticks - g_network_clock_resync_tick) >= NETWORK_CLOCK_RESYNC_HOLDOFF_TICKS) &&
+        board_recovery_network_clock_resync_needed(network_time_ms) &&
         telemetry_configure_timesync_locked(router) == SEDS_OK)
     {
       g_network_clock_resyncs++;
+      g_network_clock_resync_tick = now_ticks;
       network_time_ms = 0ULL;
     }
   }
   /* Keep an observed sample only; safety never enters the SDK or extrapolates. */
-  telemetry_event_clock_observe(network_time_ms, (uint32_t)tx_time_get());
+  telemetry_event_clock_observe(network_time_ms, (uint32_t)now_ticks);
   if (g_telemetry_discovery_seen != 0U &&
       g_telemetry_timesync_valid != 0U)
   {
@@ -841,6 +862,39 @@ SedsResult telemetry_poll_discovery(void)
 }
 
 
+#ifdef TELEMETRY_ENABLED
+/* The GS admits a valve report only near its own network clock. The SEDSnet
+ * clock is used while it agrees with the latest GS heartbeat; while it is
+ * restarting, invalid or stepped away from the GS (a source change), the
+ * heartbeat time advanced by board ticks keeps reports admissible. 0 when
+ * neither clock is known: SEDSnet then stamps the report as before. */
+static uint64_t telemetry_report_utc_locked(void)
+{
+  const uint64_t network = telemetry_unix_ms_locked();
+  const ULONG age = (ULONG)(tx_time_get() - g_station_report_tick);
+  if (g_station_report_utc == 0U || age > STATION_REPORT_REFERENCE_TICKS) return network;
+  const uint64_t station = g_station_report_utc +
+      ((uint64_t)age * 1000U) / (uint64_t)TX_TIMER_TICKS_PER_SECOND;
+  if (network != 0U && network + STATION_REPORT_AGREEMENT_MS >= station &&
+      network <= station + STATION_REPORT_AGREEMENT_MS) return network;
+  return station;
+}
+
+static SedsResult telemetry_log_umbilical_status(const uint8_t payload[2])
+{
+  if (!telemetry_router_enter()) return SEDS_BAD_ARG;
+  SedsResult result = SEDS_ERR;
+  if (g_router.r || init_telemetry_router() == SEDS_OK)
+  {
+    const uint64_t stamp = telemetry_report_utc_locked();
+    result = seds_router_log_bytes_ex(g_router.r, SEDS_DT_UMBILICAL_STATUS, payload, 2U,
+                                      stamp != 0U ? &stamp : NULL, false);
+  }
+  if (!telemetry_router_leave() && result == SEDS_OK) result = SEDS_ERR;
+  return result;
+}
+#endif
+
 SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on)
 {
   const uint8_t payload[2] = {cmd_id, (uint8_t)((on != 0U) ? 1U : 0U)};
@@ -854,8 +908,7 @@ SedsResult telemetry_publish_umbilical_status(uint8_t cmd_id, uint8_t on)
   /* Application state is independent of the transport ACK. Submit it now,
    * after the output action, rather than waiting behind periodic telemetry.
    * SEDSNet still owns routing, ordering and protocol acknowledgements. */
-  const SedsResult result = log_telemetry_synchronous(
-      SEDS_DT_UMBILICAL_STATUS, payload, 2U, sizeof(payload[0]));
+  const SedsResult result = telemetry_log_umbilical_status(payload);
   g_umbilical_status_last_result = (int32_t)result;
   if (result != SEDS_OK) g_umbilical_status_enqueue_failures++;
   else g_umbilical_status_ok_ms = (uint32_t)tx_raw_now_ms_locked();

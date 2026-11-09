@@ -18,7 +18,9 @@ typedef int SedsResult;
 #define SEDS_DT_ACTUATOR_COMMAND 218702105U
 #define SEDS_DT_AB_FILL_DRIVE_SETTINGS 257107486U
 #define TX_SUCCESS 0
-typedef struct {uint32_t ty;const char*sender;size_t sender_len;const void*payload;size_t payload_len;} SedsPacketView;
+typedef struct {uint32_t ty;const char*sender;size_t sender_len;const void*payload;size_t payload_len;uint64_t timestamp;} SedsPacketView;
+typedef unsigned long ULONG;static ULONG tick=3;static ULONG tx_time_get(void){return tick;}
+static uint64_t g_station_report_utc;static ULONG g_station_report_tick;
 static struct{void*r;}g_router={(void*)1};
 static unsigned settings_calls;
 static SedsResult fill_settings_handle(void*r,const SedsPacketView*p){assert(r==(void*)1&&p->ty==SEDS_DT_AB_FILL_DRIVE_SETTINGS);settings_calls++;return 19;}
@@ -41,6 +43,14 @@ unsigned seen=station_observed;assert(seen==25);aborted=1;now=12000;assert(contr
 p.ty=7;assert(control_packet_handler(&p,NULL)==SEDS_OK&&!commands);
 p.ty=SEDS_DT_ACTUATOR_COMMAND;assert(control_packet_handler(&p,NULL)==17&&commands==1);assert(control_packet_handler(NULL,NULL)==SEDS_BAD_ARG&&commands==2);
 p.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS;assert(control_packet_handler(&p,NULL)==19&&settings_calls==1&&commands==2);
+/* Valve-report reference: the latest GS heartbeat time, followed in either
+ * direction and also in Abort; other senders and unset stamps never move it. */
+assert(!g_station_report_utc);p.ty=SEDS_DT_HEARTBEAT;p.sender="GS";p.sender_len=2;p.timestamp=900;tick=40;
+assert(control_packet_handler(&p,NULL)==SEDS_OK&&g_station_report_utc==900&&g_station_report_tick==40);
+p.timestamp=100;tick=41;aborted=1;assert(control_packet_handler(&p,NULL)==SEDS_OK&&g_station_report_utc==100&&g_station_report_tick==41);aborted=0;
+p.timestamp=0;tick=42;assert(control_packet_handler(&p,NULL)==SEDS_OK&&g_station_report_utc==100&&g_station_report_tick==41);
+p.timestamp=UINT64_MAX;assert(control_packet_handler(&p,NULL)==SEDS_OK&&g_station_report_utc==100&&g_station_report_tick==41);
+p.sender="GB";p.timestamp=5000;assert(control_packet_handler(&p,NULL)==SEDS_OK&&g_station_report_utc==100&&g_station_report_tick==41);
 return 0;}
 '''
   with tempfile.TemporaryDirectory()as d:

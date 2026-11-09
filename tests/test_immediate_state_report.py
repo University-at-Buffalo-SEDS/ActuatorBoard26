@@ -42,9 +42,8 @@ static int seds_router_log_typed(void *router, int type, const void *data,
     calls++; status_id=p[0]; state=p[1];
     return fail ? SEDS_ERR : SEDS_OK;
 }
-static int log_telemetry_synchronous(int type, const void *data,
-                                     size_t count, size_t size) {
-    return seds_router_log_typed(g_router.r,type,data,count,size,SEDS_EK_UNSIGNED);
+static int telemetry_log_umbilical_status(const uint8_t payload[2]) {
+    return seds_router_log_typed(g_router.r,SEDS_DT_UMBILICAL_STATUS,payload,2,1,SEDS_EK_UNSIGNED);
 }
 /* Deliberately no async queue or protocol ACK mock: neither may be required. */
 """ + publisher + r"""
