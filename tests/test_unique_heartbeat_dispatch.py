@@ -25,6 +25,7 @@ static SedsResult fill_settings_handle(void*r,const SedsPacketView*p){assert(r==
 static uint64_t now,last;
 static uint32_t aborted,commands,g_heartbeat_handler_count,g_heartbeat_handler_error_count;
 static SedsResult sim_probe_heartbeat_handler(const SedsPacketView*p,void*u){(void)p;(void)u;return SEDS_OK;}
+static unsigned station_observed;static void board_recovery_observe_station_time(void*r,const SedsPacketView*p){assert(r==(void*)1&&p);station_observed++;}
 static uint32_t thread_comm_get_abort(void){return aborted;}
 static uint64_t telemetry_now_ms(void){return now;}
 static int thread_comm_note_groundstation_heartbeat(uint64_t t){last=t;return TX_SUCCESS;}
@@ -36,7 +37,7 @@ assert(g_heartbeat_handler_count==20&&!g_heartbeat_handler_error_count);
 const char*other[]={"GB","RRLS","GSX","@addr:3561204632"};const size_t sizes[]={2,4,3,16};now=11000;
 for(unsigned i=0;i<4;i++){p.sender=other[i];p.sender_len=sizes[i];assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==10000&&!commands);}
 p.sender="@addr:3561204631";p.sender_len=16;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);
-aborted=1;now=12000;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);aborted=0;
+unsigned seen=station_observed;assert(seen==25);aborted=1;now=12000;assert(control_packet_handler(&p,NULL)==SEDS_OK);assert(last==11000&&!commands);assert(station_observed==seen+1);aborted=0;
 p.ty=7;assert(control_packet_handler(&p,NULL)==SEDS_OK&&!commands);
 p.ty=SEDS_DT_ACTUATOR_COMMAND;assert(control_packet_handler(&p,NULL)==17&&commands==1);assert(control_packet_handler(NULL,NULL)==SEDS_BAD_ARG&&commands==2);
 p.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS;assert(control_packet_handler(&p,NULL)==19&&settings_calls==1&&commands==2);

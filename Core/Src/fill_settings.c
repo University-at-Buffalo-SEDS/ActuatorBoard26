@@ -6,6 +6,7 @@
 #include "board_recovery.h"
 #include "board_recovery_boot.h"
 #include "board_recovery_floor.h"
+#include "board_recovery_transport.h"
 #include "launchcore/persist.h"
 #include "tx_api.h"
 #include <stdatomic.h>
@@ -111,9 +112,9 @@ SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
  bool released=cache_leave();if(!released)return SEDS_IO;
  if(duplicate||result)return emit(r,q,result);
  if(q[2]==FILL_MODE_BRIDGE)return emit(r,q,2U); /* Uncorrected schematic: never selectable live. */
- uint64_t now=0U;BoardRecoverySnapshot snapshot={0};
+ BoardRecoverySnapshot snapshot={0};
  if(!decode64(q+12)||decode64(q+12)==UINT64_MAX||!decode32(q+20)||decode32(q+20)==UINT32_MAX)return emit(r,q,3U);
- if(seds_router_get_network_time_ms(r,&now)!=SEDS_OK||!fresh(p->timestamp,now))return emit(r,q,4U);
+ if(!fresh(p->timestamp,board_recovery_station_now(r)))return emit(r,q,4U);
  if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready()||board_recovery_snapshot(&snapshot)!=0)return emit(r,q,6U);
  if(decode64(q+12)!=board_recovery_boot_current()||decode32(q+20)!=snapshot.abort_epoch)return emit(r,q,4U);
  /* Configuration is quiescent in Startup or Idle; active/Abort states remain blocked. */
@@ -154,10 +155,10 @@ void fill_settings_service(void){
  if(!cache_leave())return;
  if(pending){
   bool initialize_absent=!selected_ready&&!reconcile_pending&&absent_candidate;
-  uint8_t mode=request[2],result=0U;uint32_t epoch=decode32(request+20);uint64_t now=0U;
+  uint8_t mode=request[2],result=0U;uint32_t epoch=decode32(request+20);
   if(persistent_store_bootstrap_pending())result=5U;
   else if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready())result=6U;
-  else if(decode64(request+12)!=board_recovery_boot_current()||source<=(reconcile_pending?reconcile_source:selected_cutoff)||seds_router_get_network_time_ms(router,&now)!=SEDS_OK||!fresh(source,now))result=4U;
+  else if(decode64(request+12)!=board_recovery_boot_current()||source<=(reconcile_pending?reconcile_source:selected_cutoff)||!fresh(source,board_recovery_station_now(router)))result=4U;
   else if(initialize_absent&&!board_recovery_command_time_allowed(source))result=4U;
   else if(!thread_comm_fill_config_begin(epoch,prepare_mode,&mode))result=5U;
   else {

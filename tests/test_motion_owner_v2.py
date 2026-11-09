@@ -117,6 +117,7 @@ static bool cache_leave(void){assert(!"QUERY must not leave settings owner");ret
 uint64_t board_recovery_boot_current(void){return 42;}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*owner,size_t on){(void)r;return n==on&&!memcmp(s,owner,n);}
 SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){(void)r;*out=network_now;return SEDS_OK;}
+uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return seds_router_get_network_time_ms(r,&t)?0U:t;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType ty,const void*data,size_t n,size_t size,SedsElemKind kind){(void)r;assert(!g_thread_comm_state_mutex.locked&&size==1&&kind==SEDS_EK_UNSIGNED&&(n==40||n==56));memcpy(reply,data,n);reported_count=n;reported_type=ty;reports++;return 0;}
 bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){FillMotionSnapshotV2 s;bool valid=main_task_fill_snapshot_v2(&s);*m=s.mode;*a=s.active_action;*b=s.busy;*remaining=s.remaining_ms;return valid;}
 '''+''.join(function(settings,name)+'\n' for name in ['decode64','encode64','fresh','decode32','encode32','emit_motion_v2','emit','fill_settings_handle'])
