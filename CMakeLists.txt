@@ -174,6 +174,10 @@ set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_FORCE_RELEASE ON CACHE BOOL
     "Build SEDSNet in release mode even for Debug firmware builds" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
+# SEDSnet 4.3.13 outgrew this firmware slot with generic ARMv7E-M code; Cortex-M4
+# code generation (as the Gateway uses) fits it back in the firmware slot.
+set(SEDSNET_ENV_RUSTFLAGS "-Ctarget-cpu=cortex-m4" CACHE STRING
+    "Rust code generation flags for the STM32G4 Cortex-M4" FORCE)
 set(SEDSNET_EMBEDDED_BUILD ON CACHE BOOL "" FORCE)
 set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
     "Preserve the current unencrypted CAN deployment and reduce flash/RAM use" FORCE)
