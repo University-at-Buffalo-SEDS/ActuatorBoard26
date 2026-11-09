@@ -445,7 +445,9 @@ static uint8_t recovery_read_outputs(uint32_t *mask)
 }
 static uint8_t recovery_prepare_base(uint8_t desired)
 {
-    if (desired == 0U) {
+    /* Startup and Idle both drive every output safe first: a RESYNC from a
+     * live Launch arrives with the igniter/supplies still energized. */
+    if (desired <= 1U) {
         HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(N2_SIG_GPIO_Port, N2_SIG_Pin, GPIO_PIN_RESET);

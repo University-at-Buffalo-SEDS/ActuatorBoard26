@@ -65,6 +65,27 @@ static void newer_in_wake(void){start_plumbing_retract(10001,thread_comm_manual_
 static void recover(void){BoardRecoverySnapshot s;assert(board_recovery_snapshot(&s)==0);assert(board_recovery_begin_prepare(0,s.abort_epoch)==0);assert(board_recovery_apply_safe(0,s.abort_epoch,&s)==-14);board_recovery_execute_owned();assert(!thread_comm_get_abort());}
 static void stop_recover_newer(void){stop_in_wake();recover();start_plumbing_retract(10002,thread_comm_manual_epoch());assert(stepperIsMoveActive(&stepper)&&g_fill_provenance.source==10002);sleeps_before_stale=sleeps;}
 static void busy_in_wake(void){g_thread_comm_state_mutex.locked=1;}
+static bool finish_checked_called;
+/* Wraps the actual finish callback: every output must already read safe and
+ * the launch owner be stopped BEFORE the board leaves Launch. */
+static void finish_checked(void){
+ uint32_t mask=UINT32_MAX;uint8_t flags=recovery_read_outputs(&mask);
+ assert((flags&(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS))==(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS)&&mask==0U);
+ assert(!(ports[9].ODR&1)&&!(ports[10].ODR&1)&&!(ports[11].ODR&1)&&!(ports[12].ODR&1)&&!(ports[13].ODR&1)&&!(ports[8].ODR&1));
+ /* The owner state is still Launch: it moves only after this returns. */
+ assert(g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_LAUNCH&&!abort_latch);
+ finish_checked_called=true;recovery_finish_owner();
+}
+static void launch_apply(void*context){(void)context;g_launch_sequence_active=1U;g_launch_sequence_igniter_started=1U;g_igniter_on=1U;g_nitrogen_open=1U;
+ ports[9].ODR|=1;ports[10].ODR|=1;ports[12].ODR|=1;ports[8].ODR|=1;stepper.is_sleeping=false;}
+/* A live (not aborted) launch owner, igniter and supplies energized, stepper awake. */
+static void live_launch(void){
+ thread_comm_msg_t m={0};m.cmd=CMD_IGNITER_SEQUENCE;m.timestamp_ms=10000;assert(thread_comm_admit_launch(m)==TX_SUCCESS);
+ thread_comm_msg_t got;uint32_t epoch=0;assert(thread_comm_receive_owned(&got,&epoch)==TX_SUCCESS&&got.cmd==CMD_IGNITER_SEQUENCE);
+ thread_comm_launch_owner_t owner;assert(thread_comm_launch_claim(10000,epoch,&owner));assert(thread_comm_launch_begin_owned(&owner,launch_apply,0));
+ assert(thread_comm_get_flight_state()==ACTUATOR_FLIGHT_STATE_LAUNCH&&g_launch_sequence_active&&!thread_comm_get_abort()&&!abort_latch);
+}
+
 #ifdef TEST_REAL_MUTEX
 static pthread_t stop_tid;static bool stop_created;
 static void*stop_thread_entry(void*unused){(void)unused;stop_worker=true;assert(thread_comm_request_manual_abort()==TX_SUCCESS);return 0;}
@@ -101,6 +122,28 @@ int main(int argc,char**argv){
  assert(board_recovery_snapshot(&b)==0);
  if(unsafe){assert(thread_comm_get_abort()&&abort_latch&&b.abort_epoch==before&&b.actual_state==state&&ports[10].ODR==1);ports[10].ODR=0;}
  else assert(!thread_comm_get_abort()&&!abort_latch&&b.abort_epoch==before+1U&&b.actual_state==5&&thread_comm_get_flight_state()==5);
+ }
+
+ else if(!strcmp(argv[1],"resync_from_launch")){
+ /* RESYNC to Idle from a live Launch: without the resync permission the
+  * owner refuses (unchanged); with it the internal barrier revokes the owner,
+  * ends the sequence and drives every output safe before the state moves,
+  * with no Abort latched and only the recovery epoch advanced. */
+ board_recovery_bind_owner(recovery_read_outputs,recovery_prepare_outputs,finish_checked);
+ live_launch();BoardRecoverySnapshot b;assert(board_recovery_snapshot(&b)==0);uint32_t before=b.abort_epoch;
+ GPIO_TypeDef saved[14];memcpy(saved,ports,sizeof saved);
+ assert(board_recovery_stage_storage_hold(before)==-10);assert(board_recovery_begin_prepare(1,before)!=0);
+ assert(!memcmp(saved,ports,sizeof saved)&&g_launch_sequence_active&&thread_comm_get_flight_state()==ACTUATOR_FLIGHT_STATE_LAUNCH);
+ /* A wrong expected epoch (stale context) is refused even with the permission. */
+ board_recovery_stop_launch=1U;assert(board_recovery_begin_prepare(1,before+1U)!=0);board_recovery_stop_launch=0U;
+ assert(!memcmp(saved,ports,sizeof saved)&&g_launch_sequence_active&&!thread_comm_get_abort());
+ board_recovery_stop_launch=1U;assert(board_recovery_stage_storage_hold(before)==0);assert(board_recovery_begin_prepare(1,before)==0);board_recovery_stop_launch=0U;
+ assert(board_recovery_apply_safe(1,before,&b)==-14);board_recovery_execute_owned();
+ assert(finish_checked_called&&!g_launch_sequence_active&&!g_igniter_on&&!g_nitrogen_open&&!thread_comm_get_abort()&&!abort_latch);
+ assert(board_recovery_snapshot(&b)==0&&b.abort_epoch==before+1U&&b.actual_state==1&&thread_comm_get_flight_state()==1&&!(b.flags&BOARD_RECOVERY_ABORT_LATCHED));
+ for(unsigned i=0;i<14;i++)assert(!(ports[i].ODR&1));
+ /* The revoked owner can never resume. */
+ assert(!thread_comm_launch_continuity());
  }
 
 #ifdef TEST_REAL_MUTEX
