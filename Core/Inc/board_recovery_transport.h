@@ -2,6 +2,12 @@
 #define BOARD_RECOVERY_TRANSPORT_H
 #include "sedsnet.h"
 #include "sedsnet_config.h"
+/* Reliable packets delivered but deliberately not applied: each is counted
+ * and acknowledged, so the station stops retransmitting it. */
+extern volatile uint32_t g_reliable_refusal_count;
+/* SEDS_BAD_ARG/SEDS_PERMISSION_DENIED (a deterministic refusal) is counted
+ * and becomes SEDS_OK; transient failures pass through and stay retried. */
+SedsResult board_recovery_acked_refusal(SedsResult result);
 void board_recovery_transport_set_router(SedsRouter *router);
 uint8_t board_recovery_manual_stop_source_allowed(SedsRouter*router,const SedsPacketView*packet);
 SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet,

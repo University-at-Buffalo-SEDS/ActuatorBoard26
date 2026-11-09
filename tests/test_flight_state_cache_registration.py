@@ -29,7 +29,8 @@ HEADERS = {'sedsnet.h': '#pragma once\n'
  'board_recovery_transport.h': '#pragma once\n'
                                '#include "sedsnet.h"\n'
                                'uint8_t board_recovery_managed_update_allowed(const '
-                               'SedsPacketView*);\n',
+                               'SedsPacketView*);\n'
+                               '#ifndef SEDS_PERMISSION_DENIED\n#define SEDS_PERMISSION_DENIED -11\n#endif\n/* Models the production refusal mapping: deterministic refusals are acknowledged. */\nstatic inline SedsResult board_recovery_acked_refusal(SedsResult r){return r==SEDS_BAD_ARG||r==SEDS_PERMISSION_DENIED?SEDS_OK:r;}\n',
  'persistent_store.h': '#pragma once\n'
                        '#include <stddef.h>\n'
                        '#include <stdint.h>\n'

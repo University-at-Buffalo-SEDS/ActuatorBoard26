@@ -348,20 +348,26 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
   return SEDS_OK;
 }
 
+/* SEDS_PERMISSION_DENIED/SEDS_BAD_ARG: refused for good (never applied, but
+ * acknowledged by board_recovery_acked_refusal); other errors are retried. */
 SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
 {
   /* Endpoint fanout may also deliver SDK diagnostics or other data types.
    * Only this handler's actual command contract can mutate board state. */
   if (pkt != NULL && pkt->ty != SEDS_DT_FLIGHT_STATE) return SEDS_OK;
+  /* The managed owner's authority also binds this endpoint: once its refusal
+   * is acknowledged, the SDK goes on to deliver the same packet here. */
+  if (pkt != NULL && !board_recovery_managed_update_allowed(pkt)) return SEDS_PERMISSION_DENIED;
   if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
-  /* Explicit recovery installs a persisted replay floor before clearing abort. */
-  if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_HANDLER_ERROR;
+  /* Explicit recovery installs a persisted replay floor before clearing abort.
+   * A stale or in-Abort write never becomes applicable on a retransmit. */
+  if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_PERMISSION_DENIED;
 
   (void)user;
 
   if (thread_comm_get_abort() != 0U)
   {
-    return SEDS_HANDLER_ERROR;
+    return SEDS_PERMISSION_DENIED;
   }
 
   if (pkt == NULL || pkt->payload == NULL || pkt->payload_len == 0U)
@@ -381,10 +387,11 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   g_flight_state_handler_count++;
   g_last_flight_state_packet = flight_state;
 
-  if (thread_comm_apply_network_flight_state(flight_state,pkt->timestamp) != TX_SUCCESS)
+  const UINT applied = thread_comm_apply_network_flight_state(flight_state,pkt->timestamp);
+  if (applied != TX_SUCCESS)
   {
     g_flight_state_handler_error_count++;
-    return SEDS_HANDLER_ERROR;
+    return applied == THREAD_COMM_STALE_TIMESTAMP ? SEDS_PERMISSION_DENIED : SEDS_HANDLER_ERROR;
   }
   return SEDS_OK;
 }
@@ -437,8 +444,8 @@ SedsResult Heartbeat_handler(const SedsPacketView *pkt, void *user)
 static SedsResult Board_Recovery_handler(const SedsPacketView *packet, void *user)
 {
   (void)user;
-  return board_recovery_handle(g_router.r, packet, SEDS_EP_BOARD_RECOVERY,
-      (uint32_t)(((uint64_t)tx_time_get() * 1000U) / TX_TIMER_TICKS_PER_SECOND));
+  return board_recovery_acked_refusal(board_recovery_handle(g_router.r, packet, SEDS_EP_BOARD_RECOVERY,
+      (uint32_t)(((uint64_t)tx_time_get() * 1000U) / TX_TIMER_TICKS_PER_SECOND)));
 }
 
 static SedsResult control_packet_handler(const SedsPacketView *packet, void *user)
@@ -450,6 +457,20 @@ static SedsResult control_packet_handler(const SedsPacketView *packet, void *use
     return Heartbeat_handler(packet, user);
   if (packet != NULL && packet->ty != SEDS_DT_ACTUATOR_COMMAND) return SEDS_OK;
   return Valve_Command_handler(packet, user);
+}
+
+/* A delivered reliable packet that is refused for good (stale, in Abort,
+ * foreign, malformed) is counted and acknowledged, never applied. A handler
+ * error withholds the SDK receipt, so the station would retransmit it for its
+ * whole retry budget; transient failures still do exactly that. */
+static SedsResult control_endpoint(const SedsPacketView *packet, void *user)
+{
+  return board_recovery_acked_refusal(control_packet_handler(packet, user));
+}
+
+static SedsResult flight_state_endpoint(const SedsPacketView *packet, void *user)
+{
+  return board_recovery_acked_refusal(Flight_State_handler(packet, user));
 }
 
 
@@ -960,7 +981,7 @@ static SedsResult init_telemetry_router_locked(void)
       },
       {
           .endpoint = SEDS_EP_ACTUATOR_BOARD,
-          .packet_handler = control_packet_handler,
+          .packet_handler = control_endpoint,
           .packed_handler = NULL,
           .user = NULL,
       },
@@ -972,7 +993,7 @@ static SedsResult init_telemetry_router_locked(void)
       },
       {
           .endpoint = SEDS_EP_FLIGHT_STATE,
-          .packet_handler = Flight_State_handler,
+          .packet_handler = flight_state_endpoint,
           .packed_handler = NULL,
           .user = NULL,
       },

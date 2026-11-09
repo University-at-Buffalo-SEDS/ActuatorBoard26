@@ -12,6 +12,13 @@
 #include <stdatomic.h>
 #include <string.h>
 static SedsRouter *recovery_router;
+/* Reliable packets delivered but deliberately not applied, then acknowledged. */
+volatile uint32_t g_reliable_refusal_count __attribute__((used));
+SedsResult board_recovery_acked_refusal(SedsResult result)
+{
+ if(result!=SEDS_BAD_ARG&&result!=SEDS_PERMISSION_DENIED)return result;
+ ++g_reliable_refusal_count;return SEDS_OK;
+}
 void board_recovery_transport_set_router(SedsRouter *router) { recovery_router=router; }
 static atomic_flag dispatching=ATOMIC_FLAG_INIT;
 static uint8_t authorized_primary(SedsRouter *router,const SedsPacketView *packet)
