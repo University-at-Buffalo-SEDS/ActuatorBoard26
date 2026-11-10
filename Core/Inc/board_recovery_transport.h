@@ -9,6 +9,8 @@ extern volatile uint32_t g_reliable_refusal_count;
  * and becomes SEDS_OK; transient failures pass through and stay retried. */
 SedsResult board_recovery_acked_refusal(SedsResult result);
 void board_recovery_transport_set_router(SedsRouter *router);
+/* Caller holds the router: one nonce-0 Abort-latched BOARD_STATE_STATUS. */
+SedsResult board_recovery_push_abort_status(SedsRouter *router, uint32_t uptime_ms);
 uint8_t board_recovery_manual_stop_source_allowed(SedsRouter*router,const SedsPacketView*packet);
 SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet,
                                 uint32_t local_endpoint,uint32_t uptime_ms);

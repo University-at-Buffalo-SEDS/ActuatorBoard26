@@ -147,6 +147,7 @@ void telemetry_thread_entry(ULONG initial_input)
         ota_stream_poll();
         (void)process_all_queues_timeout(TELEMETRY_QUEUE_SERVICE_BUDGET_MS);
         telemetry_report_safety_abort();
+        telemetry_push_abort_status();
         telemetry_report_adc_warning();
         sample_telemetry_stack();
         tx_thread_sleep(1);
