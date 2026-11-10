@@ -6,6 +6,7 @@ claim actual radio delivery, hardware outputs or recall of SDK-retained frames.
 from pathlib import Path
 from native_sdk import configured_dependency_source
 import os,re,subprocess,tempfile,unittest
+from board_identity import BOARD_REPOSITORY
 ROOT=Path(__file__).resolve().parents[1]
 class SafetyPublicationTests(unittest.TestCase):
  @classmethod
@@ -17,7 +18,7 @@ class SafetyPublicationTests(unittest.TestCase):
   reporter=re.search(r'static void telemetry_report_safety_abort\(void\)\s*\{.*?\n\}',production,re.S).group()
   (p/'harness.c').write_text((fixtures/'harness.c').read_text().replace('ACTUAL_REPORTER',reporter))
   modules=['board_abort_latch.c','thread_comm.c','board_recovery_wire.c','board_recovery_boot.c','board_recovery_transport.c','flight_state_cache.c','persistent_store.c','board_bootstrap_storage.c','bootstrap_marker.c']
-  ab=ROOT.name=='ActuatorBoard26'
+  ab=BOARD_REPOSITORY=='ActuatorBoard26'
   if ab:modules+=['fill_settings.c','fill_motion_status.c']
   subprocess.run(['cc','-pthread','-DEXPECTED_CAP=32','-DTELEMETRY_ENABLED=1','-DSAFE_MASK='+('0'if ab else'6'),'-DRECOVERY_ENDPOINT='+('2000'if ab else'2001'),'-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(fixtures),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'Core/Src'),'-I'+str(sdk/'C-Headers'),'-I'+str(lc/'bootloader/include'),*[str(ROOT/'Core/Src'/name)for name in modules],str(ROOT/'Bootloader/storage_dispatch.c'),str(lc/'bootloader/src/persist.c'),str(lc/'bootloader/src/crc32.c'),str(p/'harness.c'),'-o',str(cls.exe)],check=True)
  @classmethod

@@ -6,6 +6,7 @@ no new physical authority. Full backup-domain loss is explicitly not persistence
 from pathlib import Path
 import ast,subprocess,tempfile,unittest
 from test_verified_launch_latch import MAIN,HARNESS,function,owner_source
+from board_identity import BOARD_REPOSITORY
 ROOT=Path(__file__).resolve().parents[1]
 class ManagedLaunchMetadataTests(unittest.TestCase):
  @classmethod
@@ -15,7 +16,7 @@ class ManagedLaunchMetadataTests(unittest.TestCase):
   code=HARNESS.replace('static unsigned drop_launch;','static unsigned drop_launch,dsb_writes;').replace('void test_dsb(void){','void test_dsb(void){dsb_writes++;')
   code=code.replace(' board_abort_latch_init();TX_BYTE_POOL',' if(!strcmp(scenario,"warm_metadata")||!strcmp(scenario,"cold_metadata")||!strcmp(scenario,"torn_metadata"))load(argv[2]);\n if(!strcmp(scenario,"cold_metadata"))memset(&test_tamp,0,sizeof test_tamp);\n if(!strcmp(scenario,"torn_metadata"))test_tamp.BKP29R=0;\n board_abort_latch_init();TX_BYTE_POOL')
   marker=' assert(!thread_comm_get_abort());assert(thread_comm_set_flight_state(6)==0);';assert marker in code;code=code.replace(marker,marker+(ROOT/'tests/fixtures/managed_launch_metadata/cases.inc').read_text())
-  vb=ROOT.name=='ValveBoard26'
+  vb=BOARD_REPOSITORY=='ValveBoard26'
   if vb:
    owner=(ROOT/'Core/Src/main_thread.c').read_text();code=code.replace('ACTUAL_OWNER',owner_source(owner))
   else:code=code.replace('ACTUAL_OWNER','')

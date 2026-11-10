@@ -8,6 +8,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from board_identity import BOARD_REPOSITORY
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +25,7 @@ def function(source, name):
 
 class LaunchAbortPolicyTests(unittest.TestCase):
     def test_actual_launch_auto_manual_rollback_reset_and_admission_races(self):
-        ab = ROOT.name == 'ActuatorBoard26'
+        ab = BOARD_REPOSITORY == 'ActuatorBoard26'
         state = 'ACTUATOR' if ab else 'VALVE'
         latch = (ROOT / 'Core/Src/board_abort_latch.c').read_text()
         latch = '\n'.join(line for line in latch.splitlines() if not line.startswith('#include'))

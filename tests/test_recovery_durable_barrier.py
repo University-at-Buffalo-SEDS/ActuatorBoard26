@@ -6,6 +6,7 @@ or valve movement. Each crash exits once; Python starts exactly one reboot.
 from pathlib import Path
 from native_sdk import configured_dependency_source
 import ast,os,subprocess,tempfile,unittest
+from board_identity import BOARD_REPOSITORY
 ROOT=Path(__file__).resolve().parents[1]
 MAIN=r'''#pragma once
 #include <stdint.h>
@@ -163,8 +164,8 @@ class DurableRecoveryTests(unittest.TestCase):
   cls.exe=p/'test';cls.image=p/'power-cut.bin';sdk=Path(os.environ['SEDSNET_TEST_SOURCE']);lc=configured_dependency_source(ROOT,'sedslaunchcore','SDK_FREE_LAUNCHCORE_SOURCE')
   assert 'launchcore_persist_get_strict' in (lc/'bootloader/include/launchcore/persist.h').read_text()
   modules=['board_abort_latch.c','thread_comm.c','board_recovery_wire.c','board_recovery_boot.c','board_recovery_transport.c','flight_state_cache.c','persistent_store.c','board_bootstrap_storage.c','bootstrap_marker.c']
-  if ROOT.name=='ActuatorBoard26':modules+=['fill_settings.c','fill_motion_status.c']
-  subprocess.run(['cc','-DEXPECTED_CAP=32','-DTELEMETRY_ENABLED=1','-DSAFE_MASK='+('0'if ROOT.name=='ActuatorBoard26'else'6'),'-DRECOVERY_ENDPOINT='+('2000'if ROOT.name=='ActuatorBoard26'else'2001'),'-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(fixtures),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'Core/Src'),'-I'+str(sdk/'C-Headers'),'-I'+str(lc/'bootloader/include'),*[str(ROOT/'Core/Src'/name)for name in modules],str(ROOT/'Bootloader/storage_dispatch.c'),str(lc/'bootloader/src/persist.c'),str(lc/'bootloader/src/crc32.c'),str(fixtures/'harness.c'),'-o',str(cls.exe)],check=True)
+  if BOARD_REPOSITORY=='ActuatorBoard26':modules+=['fill_settings.c','fill_motion_status.c']
+  subprocess.run(['cc','-DEXPECTED_CAP=32','-DTELEMETRY_ENABLED=1','-DSAFE_MASK='+('0'if BOARD_REPOSITORY=='ActuatorBoard26'else'6'),'-DRECOVERY_ENDPOINT='+('2000'if BOARD_REPOSITORY=='ActuatorBoard26'else'2001'),'-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(fixtures),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'Core/Src'),'-I'+str(sdk/'C-Headers'),'-I'+str(lc/'bootloader/include'),*[str(ROOT/'Core/Src'/name)for name in modules],str(ROOT/'Bootloader/storage_dispatch.c'),str(lc/'bootloader/src/persist.c'),str(lc/'bootloader/src/crc32.c'),str(fixtures/'harness.c'),'-o',str(cls.exe)],check=True)
  @classmethod
  def tearDownClass(cls):cls.tmp.cleanup()
  def case(self,name,expected=0):

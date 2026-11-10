@@ -2,11 +2,12 @@
 from pathlib import Path
 import subprocess,tempfile,unittest
 from test_launch_abort_policy import function
+from board_identity import BOARD_REPOSITORY
 ROOT=Path(__file__).resolve().parents[1]
 
 class BootOwnerOutputsTests(unittest.TestCase):
  def test_processed_stop_and_actual_commanded_outputs(self):
-  vb=ROOT.name=='ValveBoard26'
+  vb=BOARD_REPOSITORY=='ValveBoard26'
   owner=ROOT/'Core/Src'/('main_thread.c' if vb else 'main_task.c')
   production=function(owner.read_text(),'recovery_read_outputs')
   prefix=r'''

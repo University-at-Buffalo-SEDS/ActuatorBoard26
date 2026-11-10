@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from board_identity import BOARD_REPOSITORY
 ROOT=Path(__file__).resolve().parents[1]
 def function(t,name):
  i=t.index(name+'(');start=t.rfind('\n',0,i)+1;j=t.index('{',i);depth=1;k=j+1
@@ -48,7 +49,7 @@ class ManagedAuthorityTests(unittest.TestCase):
    bool allowed=board_recovery_managed_update_allowed(&p);bool expected=healthy&&READY_GUARD&&(!active?(type!=SEDS_DT_FLIGHT_STATE||src==0):(src==0&&!stale));assert(allowed==expected);cases++;
    }
    healthy=ready=true;active=false;assert(board_recovery_managed_update_allowed(NULL));recovery_router=NULL;p.ty=SEDS_DT_FLIGHT_STATE;p.sender="GS";p.sender_len=2;assert(!board_recovery_managed_update_allowed(&p));p.ty=SEDS_DT_FLIGHT_COMMAND;assert(board_recovery_managed_update_allowed(&p));printf("actual authority matrix %u PASS\\n",cases);return 0;}
-  '''.replace('READY_GUARD','true' if ROOT.name in ['ActuatorBoard26','ValveBoard26'] else 'ready')
+  '''.replace('READY_GUARD','true' if BOARD_REPOSITORY in ['ActuatorBoard26','ValveBoard26'] else 'ready')
   with tempfile.TemporaryDirectory() as tmp:
    d=Path(tmp);p=d/'probe.c';p.write_text(code);exe=d/'probe'
    subprocess.run(['cc','-std=c17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-g',str(p),'-o',str(exe)],check=True,capture_output=True)
