@@ -187,6 +187,7 @@ static bool seds_router_sender_matches_hostname(SedsRouter*r,const uint8_t*s,siz
 static uint8_t board_recovery_automatic_is_stale(const SedsPacketView*p){(void)p;return 1;}
 static uint32_t g_flight_state_handler_count,g_flight_state_handler_error_count,g_last_flight_state_packet;
 static uint32_t g_flight_state_cache_value,g_flight_state_cache_updates,g_flight_state_cache_writes,g_flight_state_cache_errors,cache_invalidated;
+static __attribute__((unused)) uint32_t g_flight_state_cache_reports_ignored,g_flight_state_cache_refused_writes;
 static bool g_persist_ready=true,g_has_value,g_network_value_seen;
 static uint8_t g_persisted_state=UINT8_MAX;
 static SedsRouter*g_cache_router=&router;
@@ -327,7 +328,7 @@ def build(board,candidate):
     telemetry=(source/'Core/Src/telemetry.c').read_text();transport=(source/'Core/Src/board_recovery_transport.c').read_text()
     snippets=function(transport,'authorized_primary')+'\n'+function(transport,'board_recovery_manual_stop_source_allowed')+'\n'+function(telemetry,'Abort_handler')
     cache=(source/'Core/Src/flight_state_cache.c').read_text()
-    fstate='\n'.join(function(transport,n)for n in ['board_recovery_sync_command_cutoff','board_recovery_command_is_stale','board_recovery_managed_update_allowed','board_recovery_acked_refusal'])+'\n'+'\n'.join(function(telemetry,n)for n in ['Flight_State_handler','flight_state_cache_apply_network_update'])+'\n'+function(cache,'clear_managed_cache')+'\n'+function(cache,'persist_update')
+    fstate='\n'.join(function(transport,n)for n in ['board_recovery_sync_command_cutoff','board_recovery_command_is_stale','board_recovery_managed_update_allowed','board_recovery_acked_refusal']+(['board_recovery_managed_report_ignorable'] if 'board_recovery_managed_report_ignorable(' in transport else []))+'\n'+'\n'.join(function(telemetry,n)for n in ['Flight_State_handler','flight_state_cache_apply_network_update'])+'\n'+function(cache,'clear_managed_cache')+'\n'+function(cache,'persist_update')
     effects=''
     extra=[]
     if board=='ValveBoard26':

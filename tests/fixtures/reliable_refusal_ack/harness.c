@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+extern volatile uint32_t g_flight_state_cache_errors,g_flight_state_cache_reports_ignored,g_flight_state_cache_refused_writes;
 
 /* ---- ThreadX / HAL fakes ---- */
 UINT tx_mutex_create(TX_MUTEX*m,const char*n,UINT i){(void)n;(void)i;m->locked=0;return TX_SUCCESS;}
@@ -131,27 +132,42 @@ int main(int argc,char**argv){
  const char*c=argv[2];SedsResult rx=SEDS_OK;unsigned got;fresh_case();
  uint32_t refusals=g_reliable_refusal_count;
  if(!strcmp(c,"fstate_stale")){
+  /* A refused station write is acknowledged and counted as a refusal, not a cache error. */
+  const uint32_t errors_before=g_flight_state_cache_errors,refused_before=g_flight_state_cache_refused_writes;
   uint8_t s=2;stale=true;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("stale FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
   assert(got==1&&rx==SEDS_OK&&applied==0&&stores==0&&!flight_state_cache_has_value());
+  assert(g_flight_state_cache_errors==errors_before&&g_flight_state_cache_refused_writes>refused_before);
  }else if(!strcmp(c,"fstate_foreign")){
   /* Managed-owner authority refuses a non-station write before any apply. */
+  /* A report from another node is a correct refusal, not a cache error. */
+  const uint32_t errors=g_flight_state_cache_errors,ignored=g_flight_state_cache_reports_ignored;
   uint8_t s=2;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"VB",&s,1,&rx);
-  printf("foreign FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
+  printf("foreign FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u errors=%u ignored=%u\n",rx,got,applied,stores,
+         (unsigned)(g_flight_state_cache_errors-errors),(unsigned)(g_flight_state_cache_reports_ignored-ignored));
   assert(got==1&&rx==SEDS_OK&&applied==0&&stores==0&&!flight_state_cache_has_value());
+  assert(g_flight_state_cache_errors==errors&&g_flight_state_cache_reports_ignored>ignored);
  }else if(!strcmp(c,"fstate_aborted")){
+  /* A refused station write is acknowledged and counted as a refusal, not a cache error. */
+  const uint32_t errors_before=g_flight_state_cache_errors,refused_before=g_flight_state_cache_refused_writes;
   uint8_t s=3;aborted=true;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("aborted FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
   assert(got==1&&rx==SEDS_OK&&applied==0&&stores==0&&!flight_state_cache_has_value());
+  assert(g_flight_state_cache_errors==errors_before&&g_flight_state_cache_refused_writes>refused_before);
  }else if(!strcmp(c,"fstate_late")){
+  /* A refused station write is acknowledged and counted as a refusal, not a cache error. */
+  const uint32_t errors_before=g_flight_state_cache_errors,refused_before=g_flight_state_cache_refused_writes;
   uint8_t s=4;apply_result=THREAD_COMM_STALE_TIMESTAMP;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("late FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
   assert(got==1&&rx==SEDS_OK&&applied==0&&stores==0&&!flight_state_cache_has_value());
+  assert(g_flight_state_cache_errors==errors_before&&g_flight_state_cache_refused_writes>refused_before);
  }else if(!strcmp(c,"fstate_transient")){
   /* A transient owner refusal is still retried: no receipt, nothing stored. */
+  const uint32_t transient_errors=g_flight_state_cache_errors;
   uint8_t s=4;apply_result=TX_MUTEX_ERROR;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("transient FLIGHT_STATE rx=%d acks=%u stores=%u\n",rx,got,stores);
   assert(got==0&&rx!=SEDS_OK&&stores==0);refusals=g_reliable_refusal_count;
+  assert(g_flight_state_cache_errors>transient_errors);
  }else if(!strcmp(c,"fstate_applied")){
   uint8_t s=1;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("accepted FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);

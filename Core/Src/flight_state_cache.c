@@ -22,6 +22,11 @@ volatile uint32_t g_flight_state_cache_restores __attribute__((used, externally_
 volatile uint32_t g_flight_state_cache_writes __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_updates __attribute__((used, externally_visible)) = 0U;
 volatile uint32_t g_flight_state_cache_errors __attribute__((used, externally_visible)) = 0U;
+/* Non-station FLIGHT_STATE reports refused without applying: not errors. */
+volatile uint32_t g_flight_state_cache_reports_ignored __attribute__((used, externally_visible)) = 0U;
+/* Station FLIGHT_STATE writes refused for good (Abort latched, stale, late,
+ * recovery floor): acknowledged and never applied. Not errors. */
+volatile uint32_t g_flight_state_cache_refused_writes __attribute__((used, externally_visible)) = 0U;
 
 static bool g_restore_attempted;
 static bool g_persist_ready;
@@ -48,6 +53,14 @@ flight_state_cache_apply_network_update(const SedsPacketView *packet)
 {
     (void)packet;
     return SEDS_OK;
+}
+/* board_recovery_transport.c owns the definition; isolated harnesses keep
+ * the strict default. */
+__attribute__((weak)) uint8_t
+board_recovery_managed_report_ignorable(const SedsPacketView *packet)
+{
+    (void)packet;
+    return 0U;
 }
 
 #endif
@@ -144,14 +157,27 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
      * aborts the SDK receive, so the station retransmits it indefinitely. */
     if (!board_recovery_managed_update_allowed(packet)) {
         (void)clear_managed_cache();
-        ++g_flight_state_cache_errors;
+        /* Another node's own FLIGHT_STATE report: refusing it is correct
+         * and is not a cache error. */
+        if (board_recovery_managed_report_ignorable(packet)) {
+            ++g_flight_state_cache_reports_ignored;
+            return board_recovery_acked_refusal(SEDS_PERMISSION_DENIED);
+        }
+        /* A station write the recovery floor refuses: correct, not an error. */
+        ++g_flight_state_cache_refused_writes;
         return board_recovery_acked_refusal(SEDS_PERMISSION_DENIED);
     }
     const uint8_t state = packet->payload[0];
     const SedsResult apply_result = flight_state_cache_apply_network_update(packet);
     if (apply_result != SEDS_OK) {
         (void)clear_managed_cache();
-        g_flight_state_cache_errors++;
+        /* SEDS_PERMISSION_DENIED is a deterministic refusal (latched Abort,
+         * stale or late write): never applied, acknowledged and counted as a
+         * refusal. Malformed and transient failures stay cache errors. */
+        if (apply_result == SEDS_PERMISSION_DENIED)
+            ++g_flight_state_cache_refused_writes;
+        else
+            g_flight_state_cache_errors++;
         return board_recovery_acked_refusal(apply_result);
     }
     const bool changed = state != g_persisted_state;
