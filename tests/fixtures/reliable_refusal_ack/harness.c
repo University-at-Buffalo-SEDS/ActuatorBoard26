@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 extern volatile uint32_t g_flight_state_cache_errors,g_flight_state_cache_reports_ignored,g_flight_state_cache_refused_writes;
+extern volatile uint32_t g_flight_state_contract_violations,g_flight_state_contract_logged,g_flight_state_contract_first_raw;
 
 /* ---- ThreadX / HAL fakes ---- */
 UINT tx_mutex_create(TX_MUTEX*m,const char*n,UINT i){(void)n;(void)i;m->locked=0;return TX_SUCCESS;}
@@ -46,7 +47,8 @@ uint8_t board_recovery_floor_read_cutoff(uint64_t*c){*c=0U;return 1U;}
 bool bootstrap_request_fresh(uint64_t s,uint64_t n){(void)s;(void)n;return true;}
 UINT thread_comm_publish_command_cutoff(uint64_t c){(void)c;return TX_SUCCESS;}
 uint8_t thread_comm_get_abort(void){return aborted;}
-UINT thread_comm_apply_network_flight_state(uint8_t s,uint64_t t){(void)s;(void)t;if(apply_result==TX_SUCCESS)applied++;return apply_result;}
+static uint8_t applied_state=255U;
+UINT thread_comm_apply_network_flight_state(uint8_t s,uint64_t t){(void)t;if(apply_result==TX_SUCCESS){applied++;applied_state=s;}return apply_result;}
 UINT thread_comm_admit_network(thread_comm_msg_t m,uint64_t t){(void)m;(void)t;if(admit_result==TX_SUCCESS)admitted++;return admit_result;}
 UINT thread_comm_admit_network_automatic(thread_comm_msg_t m,uint64_t t){(void)m;(void)t;if(admit_result==TX_SUCCESS)admitted++;return admit_result;}
 UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t m,const char*s,uint32_t l,uint64_t u,uint32_t k,uint32_t(*n)(void)){(void)m;(void)s;(void)l;(void)u;(void)k;(void)n;admitted++;return TX_SUCCESS;}
@@ -172,6 +174,28 @@ int main(int argc,char**argv){
   uint8_t s=1;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
   printf("accepted FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
   assert(got==1&&rx==SEDS_OK&&applied>=1&&stores==1&&flight_state_cache_value()==1);refusals=g_reliable_refusal_count;
+ }else if(!strcmp(c,"fstate_applied_in_flight")){
+  /* InFlight (16) is in contract set (a): applied, persisted and acknowledged. */
+  uint8_t s=16;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
+  printf("InFlight FLIGHT_STATE rx=%d acks=%u applied=%u state=%u stores=%u\n",rx,got,applied,applied_state,stores);
+  assert(got==1&&rx==SEDS_OK&&applied>=1&&applied_state==16U&&stores==1&&flight_state_cache_value()==16U);
+  assert(g_flight_state_contract_violations==0U&&g_flight_state_contract_logged==0U);refusals=g_reliable_refusal_count;
+ }else if(!strcmp(c,"fstate_applied_retired")){
+  /* Older firmware: a retired value is mapped, logged once and acknowledged,
+   * never refused into a retransmit loop. */
+  const uint8_t raw[]={4U,9U,14U,3U},mapped[]={2U,16U,13U,2U};
+  for(unsigned i=0;i<sizeof raw;i++){
+   got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&raw[i],1,&rx);
+   printf("retired FLIGHT_STATE %u rx=%d acks=%u state=%u violations=%u logged=%u\n",raw[i],rx,got,applied_state,(unsigned)g_flight_state_contract_violations,(unsigned)g_flight_state_contract_logged);
+   assert(got==1&&rx==SEDS_OK&&applied_state==mapped[i]&&flight_state_cache_value()==mapped[i]);
+   assert(g_flight_state_contract_violations==i+1U&&g_flight_state_contract_logged==1U&&g_flight_state_contract_first_raw==4U);
+  }
+  refusals=g_reliable_refusal_count;
+ }else if(!strcmp(c,"fstate_out_of_set")){
+  /* Above InFlight is not a FLIGHT_STATE: acknowledged, never applied. */
+  uint8_t s=17;got=deliver(SEDS_DT_FLIGHT_STATE,SEDS_EP_FLIGHT_STATE,"GS",&s,1,&rx);
+  printf("out-of-set FLIGHT_STATE rx=%d acks=%u applied=%u stores=%u\n",rx,got,applied,stores);
+  assert(got==1&&rx==SEDS_OK&&applied==0&&stores==0&&!flight_state_cache_has_value());
  }else if(!strcmp(c,"fill_query")){
   uint8_t q[32]={1};q[4]=1;q[24]=1;got=deliver(SEDS_DT_AB_FILL_DRIVE_SETTINGS,SEDS_EP_ACTUATOR_BOARD,"GS",q,32,&rx);
   printf("GS fill QUERY rx=%d acks=%u status=%u\n",rx,got,status_frames);

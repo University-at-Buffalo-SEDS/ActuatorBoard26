@@ -329,6 +329,13 @@ def build(board,candidate):
     snippets=function(transport,'authorized_primary')+'\n'+function(transport,'board_recovery_manual_stop_source_allowed')+'\n'+function(telemetry,'Abort_handler')
     cache=(source/'Core/Src/flight_state_cache.c').read_text()
     fstate='\n'.join(function(transport,n)for n in ['board_recovery_sync_command_cutoff','board_recovery_command_is_stale','board_recovery_managed_update_allowed','board_recovery_acked_refusal']+(['board_recovery_managed_report_ignorable'] if 'board_recovery_managed_report_ignorable(' in transport else []))+'\n'+'\n'.join(function(telemetry,n)for n in ['Flight_State_handler','flight_state_cache_apply_network_update'])+'\n'+function(cache,'clear_managed_cache')+'\n'+function(cache,'persist_update')
+    if 'flight_state_cache_from_wire(' in cache:
+        # Contract set (a) mapping: the header block, its counters and the
+        # counting receiver, ahead of the handlers that call them.
+        header=(source/'Core/Inc/flight_state_cache.h').read_text()
+        contract=header[header.index('#define FLIGHT_STATE_NET_STARTUP'):header.index('static inline uint8_t flight_state_from_wire')]+function(header,'flight_state_from_wire')
+        counters='static uint32_t g_flight_state_contract_violations,g_flight_state_contract_logged,g_flight_state_contract_first_raw;\n'
+        fstate=contract+'\n'+counters+'static '+function(cache,'flight_state_cache_from_wire')+'\n'+fstate
     effects=''
     extra=[]
     if board=='ValveBoard26':

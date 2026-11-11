@@ -36,7 +36,7 @@ SedsResult __real_seds_router_poll_timesync(SedsRouter*r,bool*out){return seds_r
 volatile uint32_t g_telemetry_discovery_seen;
 static uint64_t clock_ms=1000;
 static unsigned writes,app_callbacks,registrations,enables,disables,invalidations,refreshes,outputs;
-static uint8_t stored=5;
+static uint8_t stored=6;
 static bool fail_write=true,policy=true,fail_enable,fail_callback;
 static SedsEndpointHandlerFn original_callback;
 static void *original_user;
@@ -253,7 +253,7 @@ int main(int argc,char**argv){
   input_size=pack(SEDS_DT_FLIGHT_STATE,1,input,sizeof input);store_busy=true;
   rx_asynchronous(input,(size_t)input_size);
   if(RX_QUEUED_ONLY){assert(telemetry_router_enter());(void)seds_router_process_all_queues(g_router.r);assert(telemetry_router_leave());}
-  assert(app_callbacks==1&&writes==0&&g_persisted_state==5&&g_flight_state_cache_errors==0&&invalidations==1);
+  assert(app_callbacks==1&&writes==0&&g_persisted_state==6&&g_flight_state_cache_errors==0&&invalidations==1);
   store_busy=false;rx_asynchronous(input,(size_t)input_size);
   if(RX_QUEUED_ONLY){assert(telemetry_router_enter());(void)seds_router_process_all_queues(g_router.r);assert(telemetry_router_leave());}
   assert(app_callbacks==2&&writes==1&&stored==1&&g_persisted_state==1&&g_flight_state_cache_errors==0&&invalidations==1);

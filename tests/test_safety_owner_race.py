@@ -89,7 +89,7 @@ static void adc_failure_once(void){do ACTUAL_ADC_FAILURE while(0);}
 #undef thread_comm_request_local_abort
 int main(int argc,char**argv){
  assert(argc==2);TX_BYTE_POOL pool={0};assert(thread_comm_init(&pool)==0);board_recovery_bind_owner(read_outputs,prepare,finish);
- assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_PREFILL)==TX_SUCCESS);
+ assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_FILL)==TX_SUCCESS);
  if(!strcmp(argv[1],"fresh_prelaunch")){interleave=0;ports[0].ODR=1;g_igniter_on=1;now_ms=5100;assert(thread_comm_note_groundstation_heartbeat(100)==0);safety_check_heartbeat();assert(thread_comm_get_abort());unsigned before_owner=gpio_writes;owner_abort_pass();assert(gpio_writes>before_owner&&!ports[0].ODR&&!g_igniter_on&&!g_launch_sequence_active&&g_safety_first_abort.reason==SAFETY_ABORT_HEARTBEAT);return 0;}
  if(!strcmp(argv[1],"overpressure_motion")){
   /* Overpressure in Startup with retraction mid-motion and every output on. */

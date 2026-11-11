@@ -33,24 +33,45 @@ uint8_t thread_comm_launch_effect_owned(const thread_comm_launch_owner_t*owner,v
 void thread_comm_launch_complete_owned(const thread_comm_launch_owner_t*owner);
 UINT thread_comm_admit_network_launch_original(thread_comm_msg_t msg,const char*sender,uint32_t sender_len);
 UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t msg,const char*sender,uint32_t sender_len,uint64_t observed_utc,uint32_t observed_tick,uint32_t(*monotonic_now)(void));
+/* Network FLIGHT_STATE (contract set (a)): Startup, Idle, Fill, Armed, Launch,
+ * Landed, Aborted and InFlight. RETIRED members are never on the wire: a
+ * receiver maps them on receipt (flight_state_cache.h). The names stay
+ * only so older firmware on a mixed bench reads clearly. */
 typedef enum {
     ACTUATOR_FLIGHT_STATE_STARTUP = 0,
     ACTUATOR_FLIGHT_STATE_IDLE = 1,
-    ACTUATOR_FLIGHT_STATE_PREFILL = 2,
-    ACTUATOR_FLIGHT_STATE_FILL_TEST = 3,
-    ACTUATOR_FLIGHT_STATE_NITROGEN_FILL = 4,
-    ACTUATOR_FLIGHT_STATE_NITROUS_FILL = 5,
+    ACTUATOR_FLIGHT_STATE_FILL = 2,
+    ACTUATOR_FLIGHT_STATE_RETIRED_FILL_TEST = 3,
+    ACTUATOR_FLIGHT_STATE_RETIRED_NITROGEN_FILL = 4,
+    ACTUATOR_FLIGHT_STATE_RETIRED_NITROUS_FILL = 5,
     ACTUATOR_FLIGHT_STATE_ARMED = 6,
     ACTUATOR_FLIGHT_STATE_LAUNCH = 7,
-    ACTUATOR_FLIGHT_STATE_ASCENT = 8,
-    ACTUATOR_FLIGHT_STATE_COAST = 9,
-    ACTUATOR_FLIGHT_STATE_APOGEE = 10,
-    ACTUATOR_FLIGHT_STATE_PARACHUTE_DEPLOY = 11,
-    ACTUATOR_FLIGHT_STATE_DESCENT = 12,
+    ACTUATOR_FLIGHT_STATE_RETIRED_ASCENT = 8,
+    ACTUATOR_FLIGHT_STATE_RETIRED_COAST = 9,
+    ACTUATOR_FLIGHT_STATE_RETIRED_APOGEE = 10,
+    ACTUATOR_FLIGHT_STATE_RETIRED_PARACHUTE_DEPLOY = 11,
+    ACTUATOR_FLIGHT_STATE_RETIRED_DESCENT = 12,
     ACTUATOR_FLIGHT_STATE_LANDED = 13,
-    ACTUATOR_FLIGHT_STATE_RECOVERY = 14,
+    ACTUATOR_FLIGHT_STATE_RETIRED_RECOVERY = 14,
     ACTUATOR_FLIGHT_STATE_ABORTED = 15,
+    ACTUATOR_FLIGHT_STATE_IN_FLIGHT = 16,
 } actuator_flight_state_t;
+
+/* Launch, InFlight and Landed: the vehicle has launched (Aborted excluded).
+ * The retired post-launch values 8..12 and 14 count too, so a state set
+ * before mapping can never read as pre-launch. */
+static inline uint8_t flight_state_launched(uint8_t state)
+{
+    return (uint8_t)((state >= ACTUATOR_FLIGHT_STATE_LAUNCH && state <= ACTUATOR_FLIGHT_STATE_RETIRED_RECOVERY) ||
+                     state == ACTUATOR_FLIGHT_STATE_IN_FLIGHT);
+}
+
+/* Progress order: Launch (7) < InFlight (16) < Landed (13). InFlight ranks
+ * with the retired in-flight values it replaces (8..12). */
+static inline uint8_t flight_state_rank(uint8_t state)
+{
+    return state == ACTUATOR_FLIGHT_STATE_IN_FLIGHT ? ACTUATOR_FLIGHT_STATE_RETIRED_DESCENT : state;
+}
 
 typedef struct {
     uint8_t n20_on;

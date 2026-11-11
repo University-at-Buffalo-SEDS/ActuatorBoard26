@@ -602,7 +602,7 @@ UINT thread_comm_set_flight_state(uint8_t flight_state)
         (void)tx_mutex_put(&g_thread_comm_state_mutex);
         return TX_QUEUE_ERROR;
     }
-    if (flight_state >= ACTUATOR_FLIGHT_STATE_LAUNCH && flight_state <= ACTUATOR_FLIGHT_STATE_RECOVERY) {
+    if (flight_state_launched(flight_state)) {
         if (g_thread_comm_abort != 0U || safety_launch_inhibit_locked() == 0U) {
             (void)tx_mutex_put(&g_thread_comm_state_mutex);
             return TX_QUEUE_ERROR;
@@ -631,15 +631,14 @@ static UINT thread_comm_apply_managed_flight_state_impl(uint8_t flight_state, ui
     if (g_fill_configuration_pending != 0U || g_recovery_pending != 0U || g_thread_comm_abort != 0U ||
         (board_launch_latch_is_set() != 0U &&
          (flight_state == ACTUATOR_FLIGHT_STATE_ABORTED ||
-          flight_state < g_thread_comm_flight_state))) {
+          flight_state_rank(flight_state) < flight_state_rank(g_thread_comm_flight_state)))) {
         (void)tx_mutex_put(&g_thread_comm_state_mutex);
         return TX_QUEUE_ERROR;
     }
     /* Managed progression is metadata, not another physical Launch admission.
      * Once inhibition completed, later backup loss cannot create a NEW Stop.
      * Initial/physical admissions still use the checked write independently. */
-    if (flight_state >= ACTUATOR_FLIGHT_STATE_LAUNCH &&
-        flight_state <= ACTUATOR_FLIGHT_STATE_RECOVERY &&
+    if (flight_state_launched(flight_state) &&
         g_safety_report_closing != 3U && !board_launch_latch_was_verified() &&
         safety_launch_inhibit_locked() == 0U) {
         (void)tx_mutex_put(&g_thread_comm_state_mutex);
@@ -1303,7 +1302,7 @@ uint8_t thread_comm_apply_automatic_owned(thread_comm_msg_t msg,uint32_t epoch,v
 int thread_comm_ota_reset_original(uint32_t epoch,void(*apply)(void*),void*context) {
  if(!g_thread_comm_initialized||tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return -1;
  int allowed=epoch&&epoch!=UINT32_MAX&&epoch==g_thread_comm_recovery_epoch&&!g_thread_comm_abort&&!board_launch_latch_is_set()&&
-  (g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_STARTUP||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_RECOVERY);
+  (g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_STARTUP||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_IDLE||g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_LANDED);
  if(allowed&&apply)apply(context);
  return tx_mutex_put(&g_thread_comm_state_mutex)==TX_SUCCESS?allowed:0;
 }

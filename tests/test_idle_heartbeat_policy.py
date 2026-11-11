@@ -99,7 +99,7 @@ int main(void) {
     /* A scripted state change after the first read must not relabel an
      * abort selected in PreFill as a Launch-state abort. This is a snapshot
      * consistency regression, not evidence of a field race. */
-    state=ACTUATOR_FLIGHT_STATE_PREFILL; reset(); change_after_snapshot=1;
+    state=ACTUATOR_FLIGHT_STATE_FILL; reset(); change_after_snapshot=1;
     state_after_snapshot=ACTUATOR_FLIGHT_STATE_LAUNCH;
     safety_check_heartbeat();
     assert(!aborted && !calls && g_safety_first_abort.reason==0);
@@ -107,7 +107,7 @@ int main(void) {
     state=ACTUATOR_FLIGHT_STATE_IDLE; reset();
     safety_heartbeat_missing_since_ms=123; safety_check_heartbeat();
     assert(safety_heartbeat_missing_since_ms==0);
-    state=ACTUATOR_FLIGHT_STATE_PREFILL; heartbeat=now_ms;
+    state=ACTUATOR_FLIGHT_STATE_FILL; heartbeat=now_ms;
     safety_check_heartbeat(); assert(!aborted);
     now_ms+=4999; safety_check_heartbeat(); assert(!aborted);
     now_ms++; safety_check_heartbeat(); assert(aborted && calls==0); /* Producer only latches; main-task owner applies outputs. */

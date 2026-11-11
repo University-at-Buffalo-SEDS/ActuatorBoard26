@@ -14,7 +14,8 @@
 extern volatile uint32_t g_telemetry_discovery_seen;
 
 #define FLIGHT_STATE_PERSIST_KEY 0x46535445u
-#define FLIGHT_STATE_MAX_VALUE 15U
+/* InFlight (16), the highest value in contract set (a). */
+#define FLIGHT_STATE_MAX_VALUE 16U
 #define FLIGHT_STATE_UNSYNCED_RETRY_MS 500U
 
 volatile uint32_t g_flight_state_cache_value __attribute__((used, externally_visible)) = 0U;
@@ -65,6 +66,26 @@ board_recovery_managed_report_ignorable(const SedsPacketView *packet)
 
 #endif
 
+/* Retired FLIGHT_STATE values received (contract violations, one per
+ * delivery), and the one-time log of the first: its raw value. */
+volatile uint32_t g_flight_state_contract_violations __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_flight_state_contract_logged __attribute__((used, externally_visible)) = 0U;
+volatile uint32_t g_flight_state_contract_first_raw __attribute__((used, externally_visible)) = 0U;
+
+uint8_t flight_state_cache_from_wire(uint8_t raw)
+{
+    uint8_t retired = 0U;
+    const uint8_t state = flight_state_from_wire(raw, &retired);
+    if (retired != 0U) {
+        ++g_flight_state_contract_violations;
+        if (g_flight_state_contract_logged == 0U) {
+            g_flight_state_contract_logged = 1U;
+            g_flight_state_contract_first_raw = raw;
+        }
+    }
+    return state;
+}
+
 void flight_state_cache_restore(void)
 {
     if (g_restore_attempted) return;
@@ -83,7 +104,7 @@ void flight_state_cache_restore(void)
         FLIGHT_STATE_PERSIST_KEY, &state, &size);
     if (status == LAUNCHCORE_PERSIST_NOT_FOUND) return;
     if (status != LAUNCHCORE_PERSIST_OK || size != sizeof(state) ||
-        state > FLIGHT_STATE_MAX_VALUE)
+        (state = flight_state_from_wire(state, NULL)) == FLIGHT_STATE_NET_INVALID)
     {
         g_flight_state_cache_errors++;
         return;
@@ -143,7 +164,7 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
     (void)user;
     if (packet == NULL || packet->ty != SEDS_DT_FLIGHT_STATE ||
         packet->payload == NULL || packet->payload_len != 1U ||
-        packet->payload[0] > FLIGHT_STATE_MAX_VALUE)
+        flight_state_from_wire(packet->payload[0], NULL) == FLIGHT_STATE_NET_INVALID)
     {
         /* Public SDK435 caches managed data before invoking this callback.
          * A malformed FSTATE must not poison future ordering/cache reads. */
@@ -167,7 +188,9 @@ static SedsResult persist_update(const SedsPacketView *packet, void *user)
         ++g_flight_state_cache_refused_writes;
         return board_recovery_acked_refusal(SEDS_PERMISSION_DENIED);
     }
-    const uint8_t state = packet->payload[0];
+    /* A retired value maps onto set (a); it is never refused into a
+     * retransmit loop. */
+    const uint8_t state = flight_state_cache_from_wire(packet->payload[0]);
     const SedsResult apply_result = flight_state_cache_apply_network_update(packet);
     if (apply_result != SEDS_OK) {
         (void)clear_managed_cache();
