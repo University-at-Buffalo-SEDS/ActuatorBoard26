@@ -39,6 +39,17 @@ python3 build.py flash --release --method stm32prog-cli
 
 Use `--app-only` only when LaunchCore and valid metadata are already installed.
 
+A factory flash (the default `--image factory`) also erases the board's
+LaunchCore persistent store, so records from an older flash layout cannot
+survive into the new image and block the store. It wipes the cached flight
+state, boot identity, recovery floor, boot marker and the stored fill settings.
+With `stm32prog-cli` and `st-flash` (1.8.0 or newer) only the store pages are
+erased. `dfu` cannot erase a page range, so it mass-erases the whole chip
+(including the OTA delta region) before writing the factory image. `st-util` and
+`stlink-gdbserver` cannot erase and refuse unless you pass `--keep-persist`.
+Pass `--keep-persist` to keep the store, or `--erase-persist` to erase it with
+an app-only flash.
+
 ## OTA updates
 
 This capacity-constrained board deliberately has no live full-image staging
