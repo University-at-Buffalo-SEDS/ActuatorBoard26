@@ -174,9 +174,14 @@ set(SEDSNET_ENV_PAYLOAD_COMPRESS_THRESHOLD "30" CACHE STRING "" FORCE)
 set(SEDSNET_FORCE_RELEASE ON CACHE BOOL
     "Build SEDSNet in release mode even for Debug firmware builds" FORCE)
 set(SEDSNET_TARGET "thumbv7em-none-eabihf" CACHE STRING "" FORCE)
-# SEDSnet 4.3.13 outgrew this firmware slot with generic ARMv7E-M code; Cortex-M4
-# code generation (as the Gateway uses) fits it back in the firmware slot.
-set(SEDSNET_ENV_RUSTFLAGS "-Ctarget-cpu=cortex-m4" CACHE STRING
+# The firmware links only SEDSnet's C static archive. Also building the rlib
+# makes Cargo skip the release-embedded LTO, which costs 24-47 KB of flash.
+set(SEDSNET_CRATE_TYPE "staticlib" CACHE STRING "C-only embedded SDK artifact" FORCE)
+# Generic ARMv7E-M + single-precision FPU code generation (the target default).
+# Naming a CPU gives SEDSnet functions target attributes the precompiled core
+# library lacks, so LTO cannot drop the panic messages, locations and core::fmt
+# code behind them (about 16 KB of flash). FORCE migrates cached flags.
+set(SEDSNET_ENV_RUSTFLAGS "" CACHE STRING
     "Rust code generation flags for the STM32G4 Cortex-M4" FORCE)
 set(SEDSNET_EMBEDDED_BUILD ON CACHE BOOL "" FORCE)
 set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
