@@ -106,6 +106,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/can_tx_queue.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_thread.c>"
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry.c>"
+    "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/board_crc32.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_event_clock.c
     "$<$<BOOL:${ENABLE_TELEMETRY}>:${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/telemetry_hooks.c>"
     ${CMAKE_CURRENT_SOURCE_DIR}/Core/Src/thread_comm.c
