@@ -351,6 +351,36 @@ SedsResult Abort_handler(const SedsPacketView *pkt, void *user)
   return SEDS_OK;
 }
 
+/* Simulator-only FLIGHT_STATE admission probe (FLIGHT_STATE_PROBE, never in
+ * release images): packets reaching the handler, applied, refused, and the
+ * last refusal's reason, value and station stamp (ms). Reasons: 1 command
+ * cutoff, 2 stale (recovery floor), 3 managed authority, 4 Abort latched,
+ * 5 malformed, 6 older than the applied state, 7 apply failed. */
+#if FLIGHT_STATE_PROBE
+volatile uint32_t g_dbg_fstate_rx __attribute__((used));
+volatile uint32_t g_dbg_fstate_applied __attribute__((used));
+volatile uint32_t g_dbg_fstate_refused __attribute__((used));
+volatile uint32_t g_dbg_fstate_reason __attribute__((used));
+volatile uint32_t g_dbg_fstate_refused_value __attribute__((used));
+volatile uint32_t g_dbg_fstate_refused_stamp_lo __attribute__((used));
+volatile uint32_t g_dbg_fstate_refused_stamp_hi __attribute__((used));
+static SedsResult fstate_probe(const SedsPacketView *pkt, SedsResult result, uint32_t reason)
+{
+  if (reason == 0U) { ++g_dbg_fstate_applied; return result; }
+  ++g_dbg_fstate_refused;
+  g_dbg_fstate_reason = reason;
+  g_dbg_fstate_refused_value = (pkt && pkt->payload && pkt->payload_len) ? pkt->payload[0] : 0xFFU;
+  g_dbg_fstate_refused_stamp_lo = pkt ? (uint32_t)pkt->timestamp : 0U;
+  g_dbg_fstate_refused_stamp_hi = pkt ? (uint32_t)(pkt->timestamp >> 32U) : 0U;
+  return result;
+}
+#define FSTATE_RX() (++g_dbg_fstate_rx)
+#define FSTATE_OUT(pkt, result, reason) fstate_probe((pkt), (result), (reason))
+#else
+#define FSTATE_RX() ((void)0)
+#define FSTATE_OUT(pkt, result, reason) (result)
+#endif
+
 /* SEDS_PERMISSION_DENIED/SEDS_BAD_ARG: refused for good (never applied, but
  * acknowledged by board_recovery_acked_refusal); other errors are retried. */
 SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
@@ -358,25 +388,26 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   /* Endpoint fanout may also deliver SDK diagnostics or other data types.
    * Only this handler's actual command contract can mutate board state. */
   if (pkt != NULL && pkt->ty != SEDS_DT_FLIGHT_STATE) return SEDS_OK;
+  FSTATE_RX();
   /* The managed owner's authority also binds this endpoint: once its refusal
    * is acknowledged, the SDK goes on to deliver the same packet here. */
-  if (pkt != NULL && !board_recovery_managed_update_allowed(pkt)) return SEDS_PERMISSION_DENIED;
-  if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
+  if (pkt != NULL && !board_recovery_managed_update_allowed(pkt)) return FSTATE_OUT(pkt, SEDS_PERMISSION_DENIED, 3U);
+  if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return FSTATE_OUT(pkt, SEDS_IO, 1U);
   /* Explicit recovery installs a persisted replay floor before clearing abort.
    * A stale or in-Abort write never becomes applicable on a retransmit. */
-  if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_PERMISSION_DENIED;
+  if (pkt != NULL && board_recovery_command_is_stale(pkt)) return FSTATE_OUT(pkt, SEDS_PERMISSION_DENIED, 2U);
 
   (void)user;
 
   if (thread_comm_get_abort() != 0U)
   {
-    return SEDS_PERMISSION_DENIED;
+    return FSTATE_OUT(pkt, SEDS_PERMISSION_DENIED, 4U);
   }
 
   if (pkt == NULL || pkt->payload == NULL || pkt->payload_len == 0U)
   {
     g_flight_state_handler_error_count++;
-    return SEDS_BAD_ARG;
+    return FSTATE_OUT(pkt, SEDS_BAD_ARG, 5U);
   }
 
   uint8_t flight_state;
@@ -403,9 +434,10 @@ SedsResult Flight_State_handler(const SedsPacketView *pkt, void *user)
   if (applied != TX_SUCCESS)
   {
     g_flight_state_handler_error_count++;
-    return applied == THREAD_COMM_STALE_TIMESTAMP ? SEDS_PERMISSION_DENIED : SEDS_HANDLER_ERROR;
+    return applied == THREAD_COMM_STALE_TIMESTAMP ? FSTATE_OUT(pkt, SEDS_PERMISSION_DENIED, 6U)
+                                                  : FSTATE_OUT(pkt, SEDS_HANDLER_ERROR, 7U);
   }
-  return SEDS_OK;
+  return FSTATE_OUT(pkt, SEDS_OK, 0U);
 }
 
 SedsResult flight_state_cache_apply_network_update(const SedsPacketView *packet)
