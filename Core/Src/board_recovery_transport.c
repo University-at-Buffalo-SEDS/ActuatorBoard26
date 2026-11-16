@@ -97,7 +97,10 @@ void board_recovery_observe_station_time(SedsRouter*router,const SedsPacketView*
  const uint64_t elapsed=((uint64_t)(ULONG)(now-back_tick)*1000U)/TX_TIMER_TICKS_PER_SECOND;
  if(back_held&&elapsed<=10000U&&stamp>back_utc){
   const uint64_t expected=back_utc+elapsed;
-  if((stamp>=expected?stamp-expected:expected-stamp)<=BOARD_RECOVERY_STATION_REANCHOR_MS){station_store(stamp);back_held=0U;atomic_store(&station_stepped_back,1U);return;}
+  if((stamp>=expected?stamp-expected:expected-stamp)<=BOARD_RECOVERY_STATION_REANCHOR_MS){station_store(stamp);back_held=0U;atomic_store(&station_stepped_back,1U);
+   /* The SDK keeps a managed FLIGHT_STATE stamped on the old clock and drops
+    * every older-stamped write from the same sender; forget it. */
+   (void)seds_router_invalidate_network_variable_cache(router,SEDS_DT_FLIGHT_STATE,NULL);return;}
  }
  back_utc=stamp;back_tick=now;back_held=1U;
 }

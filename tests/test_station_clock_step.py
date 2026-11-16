@@ -59,6 +59,8 @@ static uint8_t board_recovery_floor_cached_cutoff(uint64_t*c){*c=floor_ts;return
 static uint64_t cutoff;
 static UINT thread_comm_publish_command_cutoff(uint64_t c){if(c<cutoff)return 1U;cutoff=c;return TX_SUCCESS;}
 static UINT thread_comm_rebase_command_cutoff(uint64_t c){cutoff=c;return TX_SUCCESS;}
+enum {SEDS_DT_FLIGHT_STATE=11};static unsigned invalidated;
+static SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,int ty,bool*out){(void)out;assert(r==&cookie&&ty==SEDS_DT_FLIGHT_STATE);invalidated++;return SEDS_OK;}
 uint64_t board_recovery_station_now(SedsRouter*router);
 uint8_t board_recovery_station_behind(uint64_t mark,uint64_t station);
 """
@@ -87,7 +89,7 @@ static bool admitted(uint64_t stamp){
  return stamp>cutoff;
 }
 static void run(int64_t step){
- ticks=1;gs_offset=0;cutoff=0;
+ ticks=1;gs_offset=0;cutoff=0;invalidated=0;
  /* Reset at T0 + 1 s on the old clock; GS clock then running. */
  floor_ts=T0+1000;
  for(;ticks<10000;ticks++)if(ticks%1000==500)heartbeat();
@@ -103,6 +105,8 @@ static void run(int64_t step){
   assert(!admitted(before_reset));
  }
  assert(accepted_at);
+ /* A step back also drops the SDK's FLIGHT_STATE stamped on the old clock. */
+ assert(step>0||invalidated>0);
  const ULONG took=accepted_at-(ULONG)10000;
  printf("step %+lld ms: accepted after %lu ms\n",(long long)step,took);
  assert(took<=3000U);
@@ -111,7 +115,8 @@ static void run(int64_t step){
  assert(!admitted(gs_now()-(uint64_t)(step>0?step:0)+(step<0?(uint64_t)(-step):0)));
 }
 static void single_late_heartbeat(void){
- ticks=1;gs_offset=0;cutoff=0;floor_ts=T0+1000;
+ ticks=1;gs_offset=0;cutoff=0;floor_ts=T0+1000;invalidated=0;
+ station_store(0U);back_held=0U;
  for(;ticks<5000;ticks++)if(ticks%1000==500)heartbeat();
  const uint64_t before=board_recovery_station_now(&cookie);
  SedsPacketView late={SEDS_DT_HEARTBEAT,"GS",2,before-600000};board_recovery_observe_station_time(&cookie,&late);
@@ -125,6 +130,7 @@ static void single_late_heartbeat(void){
  SedsPacketView other={SEDS_DT_HEARTBEAT,"VB",2,before-600000};board_recovery_observe_station_time(&cookie,&other);
  ticks+=1000;other.timestamp+=1000;board_recovery_observe_station_time(&cookie,&other);
  assert(board_recovery_station_now(&cookie)>=before);
+ assert(!invalidated);
 }
 int main(void){
  run(-INT64_C(14400000));
