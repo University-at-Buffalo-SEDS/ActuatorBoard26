@@ -36,8 +36,11 @@ static void sample_main_task_stack(void)
     if (remaining < g_main_task_stack_remaining)
         g_main_task_stack_remaining = remaining;
 }
-/* GSE requires actual valve-state reports fresher than two seconds. */
-#define UMBILICAL_STATUS_PERIOD_TICKS TX_TIMER_TICKS_PER_SECOND
+/* GSE confirms a valve only while its newest report is at most 2 s old,
+ * counted from this board's timestamp. Report twice a second so one lost,
+ * late or refused report (plus transport and clock age) cannot let the
+ * station's confirmation lapse; at 1 s, two periods already filled the window. */
+#define UMBILICAL_STATUS_PERIOD_TICKS ((TX_TIMER_TICKS_PER_SECOND >= 2U) ? (TX_TIMER_TICKS_PER_SECOND / 2U) : 1U)
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
 #define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
 _Static_assert(THREAD_COMM_LAUNCH_EFFECT_DELAY_MS == LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS-LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS,"Launch timeline delay drift");
