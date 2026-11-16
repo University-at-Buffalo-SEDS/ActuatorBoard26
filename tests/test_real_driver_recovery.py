@@ -86,7 +86,7 @@ UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;
         code += (ROOT / "tests/real_driver_recovery/owner_body.c").read_text()
         owner = (ROOT / "Core/Src/main_task.c").read_text()
         names = [
-            "all_fill_outputs_off", "fill_outputs_are_off", "fill_stop_locked",
+            "fill_station_now", "fill_after_cutoff", "all_fill_outputs_off", "fill_outputs_are_off", "fill_stop_locked",
             "fill_monotonic_ms", "fill_minimum_start_ms", "next_fill_serial",
             "prepare_legacy_start", "wake_legacy_start", "finish_legacy_start", "start_plumbing_retract",
             "start_aux_locked", "start_selected_plumbing_retract", "service_aux_locked",

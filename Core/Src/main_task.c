@@ -15,6 +15,9 @@
 #include "fill_motion_status.h"
 #include "fill_settings.h"
 #include "fill_owner_gate.h"
+#ifdef TELEMETRY_ENABLED
+#include "board_recovery_transport.h"
+#endif
 
 #include <stdint.h>
 #include <stdatomic.h>
@@ -184,12 +187,27 @@ void main_task_force_outputs_safe_off(void)
 }
 
 typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;
+/* Station clock for fill ordering: GS heartbeats, which also follow a GS
+ * clock step back. The board's own network clock may lag the GS by seconds
+ * while it slews and is not the reference for a station stamp. */
+static uint64_t fill_station_now(void){
+#ifdef TELEMETRY_ENABLED
+ return board_recovery_station_now(NULL);
+#else
+ return 0U;
+#endif
+}
+/* A QD stamp orders after the last fill configuration, unless that
+ * configuration was stamped before a backward station clock step. */
+static bool fill_after_cutoff(uint64_t source,uint64_t now){
+ return fill_settings_cutoff()==0U||fill_source_after(source,fill_settings_cutoff(),now);
+}
 static bool next_fill_serial(uint32_t*out){if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return false;}*out=++g_fill_start_serial;return true;}
 static void prepare_legacy_start(bool blocked,uint32_t epoch,void*context){
  FillStart*q=context;
- if(blocked||q->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||(fill_settings_cutoff()!=0U&&q->source<=fill_settings_cutoff()))return;
+ if(blocked||q->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||!fill_after_cutoff(q->source,q->now))return;
  if(g_plumbing_retract_active||g_fill_motion.active){q->result=FILL_MOTION_BUSY;return;}
- if(q->source&&g_fill_provenance.source&&q->source<=g_fill_provenance.source){q->result=q->source==g_fill_provenance.source?FILL_MOTION_DUPLICATE:FILL_MOTION_STALE;return;}
+ if(q->source&&g_fill_provenance.source&&!fill_source_after(q->source,g_fill_provenance.source,q->now)){q->result=q->source==g_fill_provenance.source?FILL_MOTION_DUPLICATE:FILL_MOTION_STALE;return;}
  if(!next_fill_serial(&q->serial))return;
  q->epoch=epoch;q->ticket=true;
 }
@@ -206,7 +224,7 @@ static void finish_legacy_start(bool blocked,uint32_t epoch,void*context){
  FillStart*q=context;
  /* Cleanup belongs to this ticket only; never disable a newer accepted move. */
  if(!q->ticket||q->serial!=g_fill_start_serial)return;
- if(blocked||epoch!=q->epoch||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||(fill_settings_cutoff()!=0U&&q->source<=fill_settings_cutoff())){
+ if(blocked||epoch!=q->epoch||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||!fill_after_cutoff(q->source,q->now)){
   if(!g_plumbing_retract_active&&!g_fill_motion.active){stepperSleep(&stepper);all_fill_outputs_off();fill_motion_provenance_cancel(&g_fill_provenance,false);}
   q->result=FILL_MOTION_STALE;return;
  }
@@ -217,7 +235,7 @@ static void finish_legacy_start(bool blocked,uint32_t epoch,void*context){
  }else{g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);q->result=FILL_MOTION_FAULT;}
 }
 static void start_plumbing_retract(uint64_t source,uint32_t command_epoch){
- FillStart request={.source=source,.epoch=command_epoch,.result=FILL_MOTION_FAULT};
+ FillStart request={.source=source,.now=fill_station_now(),.epoch=command_epoch,.result=FILL_MOTION_FAULT};
  if(!thread_comm_fill_visit_epoch(source,prepare_legacy_start,&request)||!request.ticket)return;
  /* Preserve the legacy report; V2 alone proves actual timer acceptance. */
  g_plumbing_retracted=1U;(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,g_plumbing_retracted);
@@ -229,7 +247,7 @@ static void start_plumbing_retract(uint64_t source,uint32_t command_epoch){
 static void start_aux_locked(bool blocked,uint32_t epoch,void*context)
 {
  FillStart*request=context;
- if(blocked||request->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||request->source<=fill_settings_cutoff())return;
+ if(blocked||request->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||!fill_after_cutoff(request->source,request->now))return;
  if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return;}
  request->result=fill_motion_start(&g_fill_motion,fill_settings_mode(),FILL_ACTION_RETRACT,request->source,request->now,fill_monotonic_ms());
  if(request->result==FILL_MOTION_STARTED){
@@ -241,14 +259,11 @@ static void start_aux_locked(bool blocked,uint32_t epoch,void*context)
 static void start_selected_plumbing_retract(uint64_t source,uint32_t command_epoch)
 {
  if(!fill_settings_ready())return;
+ const uint64_t now=fill_station_now();
  if(fill_settings_mode()==FILL_MODE_STEPPER){
-  if(fill_settings_cutoff()!=0U&&source<=fill_settings_cutoff())return;
+  if(!fill_after_cutoff(source,now))return;
   start_plumbing_retract(source,command_epoch);return;
  }
- uint64_t now=0U;
-#ifdef TELEMETRY_ENABLED
- now=telemetry_unix_ms();
-#endif
  FillStart request={.source=source,.epoch=command_epoch,.now=now,.result=FILL_MOTION_UNSUPPORTED};
  (void)thread_comm_fill_visit_epoch(source,start_aux_locked,&request);
  /* No early completed status. Repeated active requests cannot extend45s. */
