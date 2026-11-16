@@ -37,3 +37,7 @@ SedsResult board_recovery_sync_command_cutoff(void);
  * clock predates a backward GS clock step. */
 #define BOARD_RECOVERY_STATION_STEP_BACK_MS UINT64_C(60000)
 uint8_t board_recovery_station_behind(uint64_t mark,uint64_t station);
+/* Nonzero for a GS packet stamped more than a minute ahead of the station
+ * clock within ten minutes of a backward re-anchor (an Aborted FLIGHT_STATE
+ * excepted): a copy sent on the old clock. */
+uint8_t board_recovery_predates_step(const SedsPacketView *packet);
