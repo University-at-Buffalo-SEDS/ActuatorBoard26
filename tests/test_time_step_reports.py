@@ -64,8 +64,6 @@ static uint64_t telemetry_unix_ms_locked(void){uint64_t t=0;return seds_router_g
 static unsigned restarts;
 static SedsResult telemetry_configure_timesync_locked(SedsRouter*r){assert(r==&router_cookie);net_valid=false;restarts++;return SEDS_OK;}
 static void telemetry_event_clock_observe(uint64_t utc,uint32_t tick){(void)utc;(void)tick;}
-enum {SEDS_DT_FLIGHT_STATE=11};
-static SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,int ty,bool*out){(void)r;(void)ty;(void)out;return SEDS_OK;}
 static unsigned depth;
 static bool telemetry_router_enter(void){depth++;return true;}
 static bool telemetry_router_leave(void){assert(depth);depth--;return true;}
