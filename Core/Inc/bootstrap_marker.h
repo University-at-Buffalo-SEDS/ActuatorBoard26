@@ -9,7 +9,6 @@
 #define BOOTSTRAP_MARKER_KEY UINT32_C(0x42525043)
 #define BOOTSTRAP_MARKER_SIZE 40U
 typedef struct{uint8_t state,desired,version,kind;uint32_t first_epoch;uint64_t first_time,first_nonce,first_issuer,first_expected_generation;}BootstrapMarker;
-bool bootstrap_request_fresh(uint64_t source,uint64_t now);
 /* Compatibility names share the wire module's explicit byte codec. */
 #define bootstrap_read64 board_recovery_read_le64
 #define bootstrap_write64 board_recovery_write_le64

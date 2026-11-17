@@ -96,7 +96,8 @@ UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;
             "recovery_finish_base", "recovery_fill_rearm_ready", "recovery_prepare_outputs",
             "recovery_finish_owner", "bootstrap_stop_owner",
         ]
-        actual = "typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;\n"
+        start = owner.index("typedef struct {uint64_t source;")
+        actual = owner[start:owner.index("\n", start) + 1]
         actual += "\n".join(function(owner, name) for name in names)
         code = code.replace("ACTUAL_OWNER", actual)
         cases = [

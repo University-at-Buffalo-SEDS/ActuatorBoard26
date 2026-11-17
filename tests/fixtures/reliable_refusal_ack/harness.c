@@ -44,8 +44,10 @@ uint8_t board_recovery_command_time_allowed(uint64_t t){(void)t;return !stale;}
 uint8_t board_recovery_floor_active(void){return 0U;}
 uint8_t board_recovery_floor_is_healthy(void){return 1U;}
 uint8_t board_recovery_floor_read_cutoff(uint64_t*c){*c=0U;return 1U;}
-bool bootstrap_request_fresh(uint64_t s,uint64_t n){(void)s;(void)n;return true;}
 UINT thread_comm_publish_command_cutoff(uint64_t c){(void)c;return TX_SUCCESS;}
+#define FSTATE_RX() ((void)0)
+#define FSTATE_OUT(pkt, result, reason) (result)
+#include "board_stamp.h"
 uint8_t thread_comm_get_abort(void){return aborted;}
 static uint8_t applied_state=255U;
 UINT thread_comm_apply_network_flight_state(uint8_t s,uint64_t t){(void)t;if(apply_result==TX_SUCCESS){applied++;applied_state=s;}return apply_result;}
@@ -65,7 +67,7 @@ bool board_bootstrap_storage_pending(void){return false;}
 bool board_bootstrap_storage_uncertain_first(void){return false;}
 bool board_bootstrap_storage_query_healthy(void){return true;}
 bool board_bootstrap_storage_note_query(const BoardRecoveryRequest*r,uint64_t a,uint64_t b,uint32_t c){(void)r;(void)a;(void)b;(void)c;return true;}
-int32_t board_bootstrap_storage_stage_first_leg(const BoardRecoveryRequest*r,uint64_t a,uint64_t b,uint32_t c,void*d,BootstrapReply e,BootstrapNow f){(void)r;(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;return -1;}
+int32_t board_bootstrap_storage_stage_first_leg(const BoardRecoveryRequest*r,uint64_t a,uint32_t c,void*d,BootstrapReply e,BootstrapFresh f){(void)r;(void)a;(void)c;(void)d;(void)e;(void)f;return -1;}
 bool persistent_store_controls_ready(void){return true;}
 bool persistent_store_bootstrap_pending(void){return false;}
 void persistent_store_note_failure(void){}

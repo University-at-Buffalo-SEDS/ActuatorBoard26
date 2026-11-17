@@ -1,4 +1,5 @@
 #include "fill_motion_status.h"
+#include "board_stamp.h"
 #include "fill_motion.h"
 void fill_motion_provenance_start(FillMotionProvenance*p,uint64_t source,uint32_t epoch,uint8_t action,uint32_t tick){
  *p=(FillMotionProvenance){.source=source,.started_ms=tick,.origin_epoch=epoch,.action=action};
@@ -25,5 +26,5 @@ void fill_motion_status_v2_encode(uint8_t out[56],const uint8_t request[32],uint
  for(unsigned i=0;i<8U;i++){out[4U+i]=request[4U+i];out[24U+i]=request[24U+i];}
  write64(out+12,generation);write32(out+20,s->current_epoch);
  out[32]=s->active_action;out[33]=s->busy;out[34]=s->lifecycle;out[35]=s->accepted_action;
- write32(out+36,s->remaining_ms);write64(out+40,s->accepted_source);write32(out+48,s->minimum_remaining_ms);write32(out+52,s->origin_epoch);
+ write32(out+36,s->remaining_ms);write64(out+40,board_stamp_ms(s->accepted_source));write32(out+48,s->minimum_remaining_ms);write32(out+52,s->origin_epoch);
 }

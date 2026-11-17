@@ -27,6 +27,12 @@ static bool g_fill_drive_fault;static uint32_t g_fill_start_serial;
 static uint8_t g_plumbing_retract_active,g_plumbing_retracted;static uint32_t g_plumbing_retract_steps_remaining;
 static uint8_t mode;static bool settings_ready=true,wake_ok=true,timer_ok=true,driver_active;
 static uint32_t tick;static uint64_t settings_cutoff=9000,network_now=10000;
+#include "sedsnet.h"
+#include "board_stamp.h"
+#define STAMP_FIXTURE_NOW network_now
+#include "network_stamp_fixture.h"
+static int fixture_router;static SedsRouter*recovery_router=(SedsRouter*)&fixture_router;
+STAMP_FRESH
 static unsigned pulses_started,sleeps,wakes,gpio_on;static void(*wake_interleave)(void);
 static int stepper;
 typedef struct {uint32_t ODR;}Port;static Port ports[5];
@@ -42,7 +48,6 @@ static void HAL_GPIO_WritePin(Port*p,unsigned pin,unsigned value){assert(g_threa
 static bool fill_settings_ready(void){return settings_ready;}
 static uint8_t fill_settings_mode(void){return mode;}
 static uint64_t fill_settings_cutoff(void){return settings_cutoff;}
-static uint64_t telemetry_unix_ms(void){return network_now;}
 static unsigned publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 static void stepperSetDir(int*p,unsigned d){(void)p;(void)d;assert(!g_thread_comm_state_mutex.locked);}
 static int stepperWakeBegin(int*p){(void)p;assert(g_thread_comm_state_mutex.locked);wakes++;return 0;}
@@ -116,21 +121,20 @@ static bool cache_enter(void){assert(!"QUERY must not enter settings owner");ret
 static bool cache_leave(void){assert(!"QUERY must not leave settings owner");return false;}
 uint64_t board_recovery_boot_current(void){return 42;}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*owner,size_t on){(void)r;return n==on&&!memcmp(s,owner,n);}
-SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){(void)r;*out=network_now;return SEDS_OK;}
-uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return seds_router_get_network_time_ms(r,&t)?0U:t;}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType ty,const void*data,size_t n,size_t size,SedsElemKind kind){(void)r;assert(!g_thread_comm_state_mutex.locked&&size==1&&kind==SEDS_EK_UNSIGNED&&(n==40||n==56));memcpy(reply,data,n);reported_count=n;reported_type=ty;reports++;return 0;}
 bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){FillMotionSnapshotV2 s;bool valid=main_task_fill_snapshot_v2(&s);*m=s.mode;*a=s.active_action;*b=s.busy;*remaining=s.remaining_ms;return valid;}
 '''+''.join(function(settings,name)+'\n' for name in ['decode64','encode64','fresh','decode32','encode32','emit_motion_v2','emit','fill_settings_handle'])
   code=code.replace('QUERY_ACTUAL',query)
   owner=(ROOT/'Core/Src/main_task.c').read_text()
   names=['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked','fill_monotonic_ms','fill_minimum_start_ms','next_fill_serial','prepare_legacy_start','wake_legacy_start','finish_legacy_start','start_plumbing_retract','start_aux_locked','start_selected_plumbing_retract','service_aux_locked','service_auxiliary_retract','service_legacy_locked','service_plumbing_retract','invalidate_motion_provenance_locked','fill_snapshot_v2_locked','main_task_fill_snapshot_v2']
-  actual='typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;\n'+''.join(function(owner,name)+'\n' for name in names)
+  start=owner.index('typedef struct {uint64_t source;');actual=owner[start:owner.index('\n',start)+1]+''.join(function(owner,name)+'\n' for name in names)
   ports=''.join(f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n' for i,name in enumerate(['BACKUP_VALVE_EN','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']))
   code=code.replace('ACTUAL',actual).replace('PORTS',ports)
+  code=code.replace('STAMP_FRESH',function((ROOT/'Core/Src/board_recovery_transport.c').read_text(),'board_recovery_stamp_fresh'))
   sdk=prepare_native_sdk(ROOT)
   with tempfile.TemporaryDirectory(prefix='motion-actual-owner-')as d:
    p=Path(d);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);exe=p/'test'
-   subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DTELEMETRY_ENABLED','-I'+str(Path(sdk['header']).parent),'-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),str(p/'test.c'),str(ROOT/'Core/Src/fill_motion.c'),str(ROOT/'Core/Src/fill_motion_status.c'),'-o',str(exe)],check=True)
+   subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DTELEMETRY_ENABLED','-I'+str(Path(sdk['header']).parent),'-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'tests/fixtures'),str(p/'test.c'),str(ROOT/'Core/Src/fill_motion.c'),str(ROOT/'Core/Src/fill_motion_status.c'),'-o',str(exe)],check=True)
    for case in ['stop_wake','newer_wake','stop_recover_newer','legacy_minimum','legacy_early_complete','aux_minimum','stop_before_service','timer_failure','owner_busy','stale','query_wire']:
     with self.subTest(case=case):subprocess.run([str(exe),case],check=True)
 if __name__=='__main__':unittest.main()

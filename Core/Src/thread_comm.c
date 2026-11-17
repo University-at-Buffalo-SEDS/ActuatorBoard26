@@ -3,6 +3,7 @@
 #include "board_abort_latch.h"
 #include "board_recovery.h"
 #include "board_recovery_floor.h"
+#include "board_stamp.h"
 #include "bootstrap_owner.h"
 #include <stdatomic.h>
 #include <string.h>
@@ -19,7 +20,10 @@ static uint32_t g_thread_comm_tail = 0U;
 static uint8_t g_thread_comm_initialized = 0U;
 static void (*g_manual_stop_apply)(void);
 /* Published after validated storage access OUTSIDE this mutex. No flash IO in
- * queue/physical-owner admission. Never lowered by ordinary producers. */
+ * queue/physical-owner admission. Never lowered by ordinary producers. Like
+ * every network timestamp_ms here it is a packed (epoch, ms) stamp
+ * (board_stamp.h): a request stamped after a backward network time step is in
+ * a newer epoch and orders after a cutoff set before it. */
 static uint64_t g_command_cutoff_ms;
 static _Atomic uint8_t g_command_admission_fault;
 /* A failed completion retirement release cannot reopen generic admission. */
@@ -777,10 +781,13 @@ uint64_t thread_comm_get_groundstation_heartbeat_ms(void)
 
 /* Called only under the state owner. The supplied clock is the bounded
  * ThreadX RAM tick getter, never SDK/network/storage work. The pair was read
- * under the router owner with at most one tick between its two samples. */
-static uint8_t launch_deadline_locked(uint64_t source,uint64_t observed_utc,
+ * under the router owner with at most one tick between its two samples.
+ * source is a packed (epoch, ms) stamp; observed_utc is the network time in
+ * that stamp's own time base (its ms plus the age SEDSnet translated across
+ * any step), so only the ms parts compare. */
+static uint8_t launch_deadline_locked(uint64_t stamp,uint64_t observed_utc,
  uint32_t observed_tick,uint32_t(*monotonic_now)(void),uint32_t*out) {
- const uint64_t frequency=TX_TIMER_TICKS_PER_SECOND;
+ const uint64_t frequency=TX_TIMER_TICKS_PER_SECOND,source=board_stamp_ms(stamp);
  if(!source||!observed_utc||observed_utc==UINT64_MAX||!monotonic_now||!out||!frequency)return 0U;
  const uint32_t now=monotonic_now(),elapsed=now-observed_tick;
  if(elapsed>=UINT32_C(0x80000000))return 0U;

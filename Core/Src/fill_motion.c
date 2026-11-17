@@ -1,8 +1,8 @@
 #include "fill_motion.h"
-uint8_t fill_motion_start(FillMotion *m,uint8_t mode,uint8_t action,uint64_t source,uint64_t now,uint32_t tick){
+uint8_t fill_motion_start(FillMotion *m,uint8_t mode,uint8_t action,uint64_t source,bool fresh,uint32_t tick){
  /* Bridge physically unavailable as-drawn. Legacy remains existing driver. */
  if(mode!=FILL_MODE_AUX||action!=FILL_ACTION_RETRACT)return FILL_MOTION_UNSUPPORTED;
- if(source==0U||source==UINT64_MAX||now==0U||now==UINT64_MAX||(now>=source?now-source>5000U:source-now>1000U))return FILL_MOTION_STALE;
+ if(source==0U||source==UINT64_MAX||!fresh)return FILL_MOTION_STALE;
  if(source<m->last_source)return FILL_MOTION_STALE;
  if(source==m->last_source)return action==m->last_action?FILL_MOTION_DUPLICATE:FILL_MOTION_STALE;
  if(m->active)return FILL_MOTION_BUSY;

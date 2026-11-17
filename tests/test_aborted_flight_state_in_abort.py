@@ -39,7 +39,8 @@ typedef int SedsResult;
 #define SEDS_PERMISSION_DENIED -4
 #define SEDS_IO -9
 #define SEDS_DT_FLIGHT_STATE 256715704U
-typedef struct {const uint8_t*payload;size_t payload_len;uint64_t timestamp;const char*sender;size_t sender_len;uint32_t ty;} SedsPacketView;
+typedef struct {const uint8_t*payload;size_t payload_len;uint64_t timestamp;const char*sender;size_t sender_len;uint32_t ty;uint16_t time_epoch;} SedsPacketView;
+#include "board_stamp.h"
 #define FLIGHT_STATE_NET_ABORTED 15U
 #define FLIGHT_STATE_NET_INVALID 0xFFU
 static uint8_t flight_state_from_wire(uint8_t raw, uint8_t *retired){(void)retired;return raw>16U?FLIGHT_STATE_NET_INVALID:raw;}
@@ -90,7 +91,7 @@ class AbortedFlightStateInAbortTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             exe = str(Path(d) / 't')
             subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function',
-                            '-fsanitize=address,undefined', '-x', 'c', '-', '-o', exe],
+                            '-fsanitize=address,undefined', '-I', str(ROOT / 'Core/Inc'), '-x', 'c', '-', '-o', exe],
                            input=HARNESS + code + TEST, text=True, check=True)
             subprocess.run([exe], check=True)
 

@@ -4,6 +4,7 @@
 #include "stepper_driver.h"
 #include "fill_motion.h"
 #include "fill_motion_status.h"
+#include "board_stamp.h"
 static FillMotion g_fill_motion;static FillMotionProvenance g_fill_provenance;
 static bool g_fill_drive_fault;static uint32_t g_fill_start_serial;
 static uint8_t g_plumbing_retract_active,g_plumbing_retracted;static uint32_t g_plumbing_retract_steps_remaining;
@@ -54,7 +55,8 @@ int HAL_TIMEx_PWMN_Start(TIM_HandleTypeDef*h,uint32_t channel){assert(h==&htim1&
 static bool fill_settings_ready(void){return settings_ready;}
 static uint8_t fill_settings_mode(void){return mode;}
 static uint64_t fill_settings_cutoff(void){return settings_cutoff;}
-static uint64_t telemetry_unix_ms(void){return network_now;}
+/* SEDSnet stamp window fixture: one time base (epoch 0) at network_now. */
+static uint8_t board_recovery_stamp_fresh(void*r,uint64_t s,uint64_t age,uint64_t ahead){(void)r;const uint64_t ms=board_stamp_ms(s);return s&&!board_stamp_epoch(s)&&(network_now>=ms?network_now-ms<=age:ms-network_now<=ahead);}
 static unsigned publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 unsigned long tx_time_get(void){return tick;}
 ACTUAL_OWNER

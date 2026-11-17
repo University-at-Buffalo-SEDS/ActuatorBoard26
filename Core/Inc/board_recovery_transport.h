@@ -21,13 +21,19 @@ uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet);
  * state report, never a desired-state write. */
 uint8_t board_recovery_managed_report_ignorable(const SedsPacketView *packet);
 uint8_t board_recovery_automatic_is_stale(const SedsPacketView *packet);
-/* Advance the station clock from an authorized GS packet's timestamp. */
-void board_recovery_observe_station_time(SedsRouter*router,const SedsPacketView*packet);
-/* Freshness clock: max(valid network time, station clock); 0 when neither. */
-uint64_t board_recovery_station_now(SedsRouter*router);
-/* Network thread only: a valid network clock more than 60 s from the station
- * clock (which then restarts from the next GS packet). */
-bool board_recovery_network_clock_resync_needed(uint64_t network_now);
+/* Command-validity window of a packed (epoch, ms) stamp (board_stamp.h),
+ * judged by SEDSnet against this node's network time across the steps it
+ * remembers. A newer-epoch stamp passes while this node re-anchors to it; an
+ * untranslatable older epoch or no network time never passes. NULL router:
+ * the recovery router. */
+uint8_t board_recovery_stamp_fresh(SedsRouter*router,uint64_t stamp,uint64_t max_age_ms,uint64_t max_ahead_ms);
+/* Station request window (recovery, floor-active commands). */
+#define BOARD_RECOVERY_FRESH_AGE_MS UINT64_C(15000)
+#define BOARD_RECOVERY_FRESH_AHEAD_MS UINT64_C(1000)
+uint8_t board_recovery_request_fresh(SedsRouter*router,uint64_t stamp);
+/* Age of a packed stamp in this node's time base (negative: ahead). 0 when it
+ * has no translatable age (newer epoch not yet adopted, no network time). */
+uint8_t board_recovery_stamp_age(SedsRouter*router,uint64_t stamp,int64_t*age_ms);
 #endif
 
 /* Validated floor publication OUTSIDE owner locks. IO/mutex failure is not stale ACK. */

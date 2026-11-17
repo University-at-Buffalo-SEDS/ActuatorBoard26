@@ -35,13 +35,17 @@ static char captured[256];static struct{void*r;}g_router={(void*)1};static void*
 static int init_telemetry_router(void){return 0;}
 static inline uint8_t telemetry_link_recently_active(void){return 1;}
 static SedsResult seds_router_log_string_ex(void*r,SedsDataType t,const char*s,size_t n,const uint64_t*stamp,int q){assert(r&&t==SEDS_DT_ABORT&&q);++attempts;if(failures){--failures;return SEDS_IO;}assert(n<sizeof captured);memcpy(captured,s,n);captured[n]=0;captured_stamp=stamp?*stamp:now_utc;return 0;}
-typedef struct{const uint8_t*payload;size_t payload_len;uint64_t timestamp;uint32_t ty;}SedsPacketView;
+typedef struct{const uint8_t*payload;size_t payload_len;uint64_t timestamp;uint32_t ty;uint16_t time_epoch;}SedsPacketView;
+@@STAMP@@
 static uint8_t board_recovery_command_time_allowed(uint64_t t){return cutoff==0||t>cutoff;}
 static uint8_t board_recovery_floor_active(void){return cutoff!=0;}
-static int seds_router_get_network_time_ms(void*r,uint64_t*out){assert(r);*out=now_utc;return 0;}
-/* Station-clock fixture: the freshness clock equals the network clock here. */
-static uint64_t board_recovery_station_now(void*r){uint64_t t=0;return seds_router_get_network_time_ms(r,&t)?0U:t;}
+/* SEDSnet stamp window fixture: one time base (epoch 0) at now_utc. */
+static int seds_router_network_stamp_fresh(void*r,uint16_t e,uint64_t t,uint64_t age,uint64_t ahead,bool*out){assert(r);*out=e==0U&&now_utc&&(now_utc>=t?now_utc-t<=age:t-now_utc<=ahead);return SEDS_OK;}
+#define BOARD_RECOVERY_FRESH_AGE_MS UINT64_C(15000)
+#define BOARD_RECOVERY_FRESH_AHEAD_MS UINT64_C(1000)
+typedef void SedsRouter;
 static @@FRESH@@
+static @@REQUEST_FRESH@@
 static uint8_t board_recovery_manual_stop_source_allowed(void*r,const SedsPacketView*p){(void)r;(void)p;return 0;}
 static UINT thread_comm_request_manual_abort_original_utc(uint64_t t){(void)t;thread_comm_latch_abort_locked(1);return 0;}
 static UINT thread_comm_request_manual_abort(void){thread_comm_latch_abort_locked(1);return 0;}

@@ -15,6 +15,9 @@
 #include "fill_motion_status.h"
 #include "fill_settings.h"
 #include "fill_owner_gate.h"
+#ifdef TELEMETRY_ENABLED
+#include "board_recovery_transport.h"
+#endif
 
 #include <stdint.h>
 #include <stdatomic.h>
@@ -183,7 +186,9 @@ void main_task_force_outputs_safe_off(void)
     publish_expected_outputs();
 }
 
-typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;
+/* source: the command's packed (epoch, ms) stamp; ordering against the fill
+ * cutoff and provenance compares packed stamps across network time steps. */
+typedef struct {uint64_t source;uint32_t epoch,serial;uint8_t result;bool fresh,ticket,woke;} FillStart;
 static bool next_fill_serial(uint32_t*out){if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return false;}*out=++g_fill_start_serial;return true;}
 static void prepare_legacy_start(bool blocked,uint32_t epoch,void*context){
  FillStart*q=context;
@@ -231,7 +236,7 @@ static void start_aux_locked(bool blocked,uint32_t epoch,void*context)
  FillStart*request=context;
  if(blocked||request->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||request->source<=fill_settings_cutoff())return;
  if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return;}
- request->result=fill_motion_start(&g_fill_motion,fill_settings_mode(),FILL_ACTION_RETRACT,request->source,request->now,fill_monotonic_ms());
+ request->result=fill_motion_start(&g_fill_motion,fill_settings_mode(),FILL_ACTION_RETRACT,request->source,request->fresh,fill_monotonic_ms());
  if(request->result==FILL_MOTION_STARTED){
   g_plumbing_retracted=0U;HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port,BACKUP_VALVE_EN_Pin,GPIO_PIN_SET);
   if((BACKUP_VALVE_EN_GPIO_Port->ODR&BACKUP_VALVE_EN_Pin)==0U){fill_stop_locked(true,0);g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);request->result=FILL_MOTION_FAULT;}
@@ -245,11 +250,13 @@ static void start_selected_plumbing_retract(uint64_t source,uint32_t command_epo
   if(fill_settings_cutoff()!=0U&&source<=fill_settings_cutoff())return;
   start_plumbing_retract(source,command_epoch);return;
  }
- uint64_t now=0U;
+ /* The QD window is judged by SEDSnet before entering the fill owner (no SDK
+  * under it): a QD stamped right after a GS time step is fresh. */
+ bool fresh=false;
 #ifdef TELEMETRY_ENABLED
- now=telemetry_unix_ms();
+ fresh=board_recovery_stamp_fresh(NULL,source,FILL_MOTION_FRESH_AGE_MS,FILL_MOTION_FRESH_AHEAD_MS)!=0U;
 #endif
- FillStart request={.source=source,.epoch=command_epoch,.now=now,.result=FILL_MOTION_UNSUPPORTED};
+ FillStart request={.source=source,.epoch=command_epoch,.fresh=fresh,.result=FILL_MOTION_UNSUPPORTED};
  (void)thread_comm_fill_visit_epoch(source,start_aux_locked,&request);
  /* No early completed status. Repeated active requests cannot extend45s. */
  if(request.result==FILL_MOTION_STARTED)(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,0U);

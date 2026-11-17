@@ -12,6 +12,8 @@ extern "C" {
  */
 #define THREAD_COMM_QUEUE_DEPTH 16U
 
+/* timestamp_ms of a network command is its packed (epoch, ms) stamp
+ * (board_stamp.h); every cutoff it is compared with is packed the same way. */
 typedef struct {
     uint8_t cmd;
     uint64_t timestamp_ms;
@@ -32,6 +34,8 @@ uint8_t thread_comm_launch_begin_owned_deadline(const thread_comm_launch_owner_t
 uint8_t thread_comm_launch_effect_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context);
 void thread_comm_launch_complete_owned(const thread_comm_launch_owner_t*owner);
 UINT thread_comm_admit_network_launch_original(thread_comm_msg_t msg,const char*sender,uint32_t sender_len);
+/* msg.timestamp_ms: packed (epoch, ms) stamp (board_stamp.h). observed_utc:
+ * the network time in that stamp's time base (its ms plus its SEDSnet age). */
 UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t msg,const char*sender,uint32_t sender_len,uint64_t observed_utc,uint32_t observed_tick,uint32_t(*monotonic_now)(void));
 /* Network FLIGHT_STATE (contract set (a)): Startup, Idle, Fill, Armed, Launch,
  * Landed, Aborted and InFlight. RETIRED members are never on the wire: a

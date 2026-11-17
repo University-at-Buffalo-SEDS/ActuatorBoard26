@@ -28,7 +28,10 @@ class AutomaticAbortOriginTests(unittest.TestCase):
         clock = (ROOT / 'Core/Src/telemetry_event_clock.c').read_text()
         clock = '\n'.join(line for line in clock.splitlines() if not line.startswith('#include'))
         source = source.replace('@@EVENT_CLOCK@@', clock)
-        source = source.replace('@@FRESH@@', function(ROOT / 'Core/Src/bootstrap_marker.c', 'bool bootstrap_request_fresh('))
+        stamp = (ROOT / 'Core/Inc/board_stamp.h').read_text()
+        source = source.replace('@@STAMP@@', stamp[stamp.index('#define BOARD_STAMP_MS_BITS'):stamp.rindex('#endif')])
+        source = source.replace('@@FRESH@@', function(ROOT / 'Core/Src/board_recovery_transport.c', 'uint8_t board_recovery_stamp_fresh('))
+        source = source.replace('@@REQUEST_FRESH@@', function(ROOT / 'Core/Src/board_recovery_transport.c', 'uint8_t board_recovery_request_fresh('))
         functions = [('Core/Src/thread_comm.c', 'uint8_t thread_comm_request_automatic_abort('), ('Core/Src/board_recovery_transport.c', 'uint8_t board_recovery_command_is_stale('), ('Core/Src/board_recovery_transport.c', 'uint8_t board_recovery_automatic_is_stale('), ('Core/Src/telemetry.c', 'SedsResult Abort_handler('), ('Core/Src/telemetry.c', 'static SedsResult log_telemetry_string_asynchronous_locked('), ('Core/Src/telemetry.c', 'static SedsResult telemetry_log_string_original('), ('Core/Src/telemetry.c', 'SedsResult log_telemetry_string_asynchronous_at('), ('Core/Src/telemetry_thread.c', 'static void telemetry_report_safety_abort(void)')]
         for index, (path, signature) in enumerate(functions):
             source = source.replace(f'@@FUNC{index}@@', function(ROOT / path, signature))

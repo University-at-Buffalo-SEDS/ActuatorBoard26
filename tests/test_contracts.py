@@ -88,7 +88,7 @@ class FirmwareContracts(unittest.TestCase):
             r"SedsResult Valve_Command_handler.*?\n}\n", telemetry, re.DOTALL
         )
         self.assertIsNotNone(match)
-        self.assertIn("thread_comm_admit_network(msg,pkt->timestamp)", match.group(0))
+        self.assertIn("thread_comm_admit_network(msg,msg.timestamp_ms)", match.group(0))
         admission = (ROOT / "Core/Src/thread_comm.c").read_text()
         self.assertIn("else result = thread_comm_send_owned_nowait(msg);", admission)
         self.assertNotIn("TX_WAIT_FOREVER", match.group(0))

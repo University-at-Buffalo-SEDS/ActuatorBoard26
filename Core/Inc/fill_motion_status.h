@@ -5,6 +5,7 @@
 #define FILL_MOTION_STATUS_V2_SIZE 56U
 #define FILL_MOTION_QUERY_VERSION 2U
 enum {FILL_PROVENANCE_UNKNOWN=0,FILL_PROVENANCE_ACTIVE=1,FILL_PROVENANCE_COMPLETED=2,FILL_PROVENANCE_CANCELLED=3,FILL_PROVENANCE_FAULT=4};
+/* source: packed (epoch, ms) stamp of the accepted move (board_stamp.h). */
 typedef struct {
  uint64_t source;
  uint32_t started_ms,origin_epoch;
@@ -12,7 +13,7 @@ typedef struct {
  bool minimum_satisfied;
 } FillMotionProvenance;
 typedef struct {
- uint64_t accepted_source;
+ uint64_t accepted_source; /* packed; the V2 status carries its ms only */
  uint32_t current_epoch,origin_epoch,remaining_ms,minimum_remaining_ms;
  uint8_t mode,active_action,busy,lifecycle,accepted_action;
  bool fault;

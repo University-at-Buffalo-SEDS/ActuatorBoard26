@@ -7,6 +7,7 @@
 #include "board_recovery_boot.h"
 #include "board_recovery_floor.h"
 #include "board_recovery_transport.h"
+#include "board_stamp.h"
 #include "launchcore/persist.h"
 #include "tx_api.h"
 #include <stdatomic.h>
@@ -73,7 +74,8 @@ void fill_settings_restore(void){
  if(valid&&released){selected_cutoff=source;selected_mode=mode;selected_ready=true;}
 }
 #ifdef TELEMETRY_ENABLED
-static bool fresh(uint64_t source,uint64_t now){return source&&source!=UINT64_MAX&&now&&now!=UINT64_MAX&&(now>=source?now-source<=5000U:source-now<=1000U);}
+/* FDRV window: at most 5 s old or 1 s ahead, judged by SEDSnet across steps. */
+static bool fresh(SedsRouter*r,uint64_t stamp){return board_recovery_stamp_fresh(r,stamp,FILL_MOTION_FRESH_AGE_MS,FILL_MOTION_FRESH_AHEAD_MS)!=0U;}
 static uint32_t decode32(const uint8_t*p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static void encode32(uint8_t*p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
 static SedsResult emit_motion_v2(SedsRouter*r,const uint8_t request[32],uint8_t result){
@@ -105,23 +107,24 @@ SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
  if(persistent_store_bootstrap_pending())return emit(r,q,5U);
  if(q[1]==0U)return emit(r,q,0U); /* QUERY does not read/write journal or alter holding torque. */
  if(!cache_enter())return SEDS_IO;
+ const uint64_t stamp=board_stamp_of(p);
  bool duplicate=cached.valid&&!memcmp(q+4,cached.bytes+4,8)&&!memcmp(q+24,cached.bytes+24,8);
  uint8_t result=0U;
- if(duplicate)result=memcmp(q,cached.bytes,32)||p->timestamp!=cached.source?7U:cached.result;
+ if(duplicate)result=memcmp(q,cached.bytes,32)||stamp!=cached.source?7U:cached.result;
  else if(cached.pending)result=5U;
  bool released=cache_leave();if(!released)return SEDS_IO;
  if(duplicate||result)return emit(r,q,result);
  if(q[2]==FILL_MODE_BRIDGE)return emit(r,q,2U); /* Uncorrected schematic: never selectable live. */
  BoardRecoverySnapshot snapshot={0};
  if(!decode64(q+12)||decode64(q+12)==UINT64_MAX||!decode32(q+20)||decode32(q+20)==UINT32_MAX)return emit(r,q,3U);
- if(!fresh(p->timestamp,board_recovery_station_now(r)))return emit(r,q,4U);
+ if(!fresh(r,stamp))return emit(r,q,4U);
  if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready()||board_recovery_snapshot(&snapshot)!=0)return emit(r,q,6U);
  if(decode64(q+12)!=board_recovery_boot_current()||decode32(q+20)!=snapshot.abort_epoch)return emit(r,q,4U);
  /* Configuration is quiescent in Startup or Idle; active/Abort states remain blocked. */
  if(snapshot.actual_state>1U||(snapshot.flags&BOARD_RECOVERY_ABORT_LATCHED)!=0U)return emit(r,q,5U);
  if(!cache_enter())return SEDS_IO;
  if(cached.pending){result=5U;}
- else {memcpy(cached.bytes,q,32);cached.source=p->timestamp;cached.router=r;cached.result=1U;cached.valid=true;cached.pending=true;cached.dirty=false;result=1U;}
+ else {memcpy(cached.bytes,q,32);cached.source=stamp;cached.router=r;cached.result=1U;cached.valid=true;cached.pending=true;cached.dirty=false;result=1U;}
  if(!cache_leave())return SEDS_IO;
  return emit(r,q,result);
 }
@@ -158,7 +161,7 @@ void fill_settings_service(void){
   uint8_t mode=request[2],result=0U;uint32_t epoch=decode32(request+20);
   if(persistent_store_bootstrap_pending())result=5U;
   else if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready())result=6U;
-  else if(decode64(request+12)!=board_recovery_boot_current()||source<=(reconcile_pending?reconcile_source:selected_cutoff)||!fresh(source,board_recovery_station_now(router)))result=4U;
+  else if(decode64(request+12)!=board_recovery_boot_current()||source<=(reconcile_pending?reconcile_source:selected_cutoff)||!fresh(router,source))result=4U;
   else if(initialize_absent&&!board_recovery_command_time_allowed(source))result=4U;
   else if(!thread_comm_fill_config_begin(epoch,prepare_mode,&mode))result=5U;
   else {

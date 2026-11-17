@@ -170,7 +170,8 @@ uint8_t board_launch_latch_is_set(void){return launch_latch;}
 uint8_t board_launch_latch_was_verified(void){return launch_latch;}
 uint8_t board_abort_latch_clear_for_recovery(void){abort_latch=launch_latch=0;return 1;}
 typedef struct{int unused;}SedsRouter;
-typedef struct{const uint8_t*payload;size_t payload_len;const uint8_t*sender;size_t sender_len;uint64_t timestamp;uint32_t ty;}SedsPacketView;
+typedef struct{const uint8_t*payload;size_t payload_len;const uint8_t*sender;size_t sender_len;uint64_t timestamp;uint32_t ty;uint16_t time_epoch;}SedsPacketView;
+#include "board_stamp.h"
 typedef int SedsResult;
 #define SEDS_OK 0
 #define SEDS_IO -1
@@ -192,8 +193,10 @@ static bool g_persist_ready=true,g_has_value,g_network_value_seen;
 static uint8_t g_persisted_state=UINT8_MAX;
 static SedsRouter*g_cache_router=&router;
 static SedsRouter*recovery_router=&router;
-static SedsResult seds_router_get_network_time_ms(SedsRouter*r,uint64_t*out){assert(r);*out=1000;return SEDS_OK;}
-static __attribute__((unused)) uint64_t board_recovery_station_now(SedsRouter*r){uint64_t t=0;return seds_router_get_network_time_ms(r,&t)?0U:t;}
+/* SEDSnet stamp window fixture: network time 1000 in epoch 0. */
+static __attribute__((unused)) uint8_t board_recovery_request_fresh(SedsRouter*r,uint64_t s){assert(r);const uint64_t ms=board_stamp_ms(s);return s&&!board_stamp_epoch(s)&&(1000U>=ms?1000U-ms<=15000U:ms-1000U<=1000U);}
+#define FSTATE_RX() ((void)0)
+#define FSTATE_OUT(pkt, result, reason) (result)
 static SedsResult seds_router_invalidate_network_variable_cache(SedsRouter*r,uint32_t ty,const void*unused){(void)unused;assert(r&&ty==SEDS_DT_FLIGHT_STATE);cache_invalidated++;return SEDS_OK;}
 static int32_t seds_pkt_get_u8(const SedsPacketView*p,uint8_t*out,size_t n){assert(n==1&&p->payload_len==1);*out=p->payload[0];return 1;}
 AUTH_AND_HANDLER

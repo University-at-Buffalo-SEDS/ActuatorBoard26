@@ -32,7 +32,10 @@ class LaunchAbortPolicyTests(unittest.TestCase):
         shared = (ROOT / 'Core/Src/thread_comm.c').read_text()
         receiver = function((ROOT / 'Core/Src/telemetry.c').read_text(), 'Abort_handler')
         command_receiver = function((ROOT / 'Core/Src/telemetry.c').read_text(), 'Valve_Command_handler')
-        clock_adapter = "unsigned long tx_time_get(void){return 0;}\nstatic SedsResult seds_router_get_network_time_ms(void*r,uint64_t*out){(void)r;*out=1234;return SEDS_OK;}\n"
+        clock_adapter = ("unsigned long tx_time_get(void){return 0;}\n"
+                         "/* SEDSnet age fixture: network time 1234 in epoch 0. */\n"
+                         "static uint8_t board_recovery_stamp_age(void*r,uint64_t s,int64_t*age){(void)r;if(board_stamp_epoch(s))return 0;*age=(int64_t)1234-(int64_t)board_stamp_ms(s);return 1;}\n"
+                         "#define FSTATE_RX() ((void)0)\n#define FSTATE_OUT(pkt, result, reason) (result)\n")
         timed_helpers = function((ROOT / 'Core/Src/telemetry.c').read_text(), 'launch_monotonic_tick')+'\n'+function((ROOT / 'Core/Src/telemetry.c').read_text(), 'admit_timed_launch')+'\n'
 
         managed_receiver = function((ROOT / 'Core/Src/telemetry.c').read_text(), 'Flight_State_handler')
@@ -101,7 +104,8 @@ static SedsResult board_recovery_sync_command_cutoff(void){return SEDS_OK;}
 #define SEDS_ERR -2
 #define SEDS_HANDLER_ERROR -3
 #define SEDS_PERMISSION_DENIED -4
-typedef struct {const uint8_t*payload;size_t payload_len;uint64_t timestamp;const char*sender;size_t sender_len;uint32_t ty;} SedsPacketView;
+typedef struct {const uint8_t*payload;size_t payload_len;uint64_t timestamp;const char*sender;size_t sender_len;uint32_t ty;uint16_t time_epoch;} SedsPacketView;
+#include "board_stamp.h"
 static uint8_t board_recovery_command_is_stale(const SedsPacketView*p){(void)p;return 0;}
 static uint8_t board_recovery_managed_update_allowed(const SedsPacketView*p){(void)p;return 1;}
 static uint8_t board_recovery_automatic_is_stale(const SedsPacketView*p){(void)p;return 0;}

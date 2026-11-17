@@ -30,7 +30,7 @@ def compile_case(code,case,inline_state=False):
  if 'ULONG tx_time_get(void){' not in effective:code+='\nULONG tx_time_get(void){return 0;}\n'
  if 'SedsResult Valve_Command_handler(' in code:
   telemetry=(ROOT/'Core/Src/telemetry.c').read_text()
-  adapter='\nstatic SedsResult seds_router_get_network_time_ms(void*r,uint64_t*out){(void)r;*out=10000U;return SEDS_OK;}\n'
+  adapter='\n#include "board_stamp.h"\n/* SEDSnet age fixture: network time 10000 in epoch 0. */\nstatic uint8_t board_recovery_stamp_age(void*r,uint64_t s,int64_t*age){(void)r;if(board_stamp_epoch(s))return 0;*age=(int64_t)10000-(int64_t)board_stamp_ms(s);return 1;}\n'
   if 'g_router' not in code:adapter='static struct{void*r;}g_router={(void*)1};\n'+adapter
   helpers=adapter+function(telemetry,'launch_monotonic_tick')+'\n'+function(telemetry,'admit_timed_launch')+'\n'
   code=code.replace('SedsResult Valve_Command_handler(',helpers+'SedsResult Valve_Command_handler(')
@@ -56,7 +56,7 @@ typedef int SedsResult;
 #define SEDS_BAD_ARG -2
 #define SEDS_IO -3
 #define SEDS_HANDLER_ERROR -4
-typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;const uint8_t*payload;size_t payload_len;}SedsPacketView;
+typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;const uint8_t*payload;size_t payload_len;uint16_t time_epoch;}SedsPacketView;
 static unsigned g_command_queue_drop_count;
 static int board_recovery_sync_command_cutoff(void){return SEDS_OK;}
 static bool board_recovery_command_is_stale(const SedsPacketView*p){(void)p;return false;}

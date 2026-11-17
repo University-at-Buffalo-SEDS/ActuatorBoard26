@@ -8,6 +8,9 @@ void fill_settings_restore(void);
 void fill_settings_service(void);
 uint8_t fill_settings_mode(void);
 bool fill_settings_ready(void);
+/* Packed (epoch, ms) stamp of the persisted configuration (board_stamp.h); a
+ * record written before epochs reads as epoch 0. QD and legacy retracts order
+ * after it. */
 uint64_t fill_settings_cutoff(void);
 /* Bounded serialized main-owner callbacks, no SDK or storage. */
 uint8_t main_task_fill_prepare_mode(uint8_t mode);

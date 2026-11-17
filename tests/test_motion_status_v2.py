@@ -36,6 +36,6 @@ int main(void){uint8_t request[32]={2,0},raw[58];for(unsigned i=0;i<8;i++){reque
 '''
   with tempfile.TemporaryDirectory()as tmp:
    d=Path(tmp);p=d/'codec.c';p.write_text(code);exe=d/'codec';subprocess.run(['cc','-std=c17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I'+str(ROOT/'Core/Inc'),str(ROOT/'Core/Src/fill_motion_status.c'),str(p),'-o',str(exe)],check=True);actual=subprocess.check_output([str(exe)],text=True).strip()
-   expected=(bytes([2,0,2,5])+bytes(range(0x11,0x19))+(0xA1A2A3A4A5A6A7A8).to_bytes(8,'little')+(0x12345678).to_bytes(4,'little')+bytes(range(0x81,0x89))+bytes([0,0,2,1])+bytes(4)+(0x0102030405060708).to_bytes(8,'little')+bytes(4)+(0x12345678).to_bytes(4,'little')).hex();self.assertEqual(actual,expected)
+   expected=(bytes([2,0,2,5])+bytes(range(0x11,0x19))+(0xA1A2A3A4A5A6A7A8).to_bytes(8,'little')+(0x12345678).to_bytes(4,'little')+bytes(range(0x81,0x89))+bytes([0,0,2,1])+bytes(4)+(0x030405060708).to_bytes(8,'little')+bytes(4)+(0x12345678).to_bytes(4,'little')).hex();self.assertEqual(actual,expected)
  def test_old_schema_definition_unchanged(self):
   new=json.loads((ROOT/'config/sedsnet.json').read_text());old=next(t for t in new['types']if t['name']=='AB_FILL_DRIVE_STATUS');motion=next(t for t in new['types']if t['name']=='AB_FILL_MOTION_STATUS_V2');self.assertEqual(old['element'],{'kind':'Static','data_type':'UInt8','count':40});self.assertEqual(motion['element'],{'kind':'Static','data_type':'UInt8','count':56})
