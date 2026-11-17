@@ -189,6 +189,17 @@ set(SEDSNET_CRATE_TYPE "staticlib" CACHE STRING "C-only embedded SDK artifact" F
 # code behind them (about 16 KB of flash). FORCE migrates cached flags.
 set(SEDSNET_ENV_RUSTFLAGS "" CACHE STRING
     "Rust code generation flags for the STM32G4 Cortex-M4" FORCE)
+# SEDSnet compresses only at zstd level 1, without long-distance matching or a
+# target block size. Let the SDK leave that unreachable zstd code out; frames
+# are byte-identical. SDKs older than 6.0.2 ignore the setting.
+set(SEDSNET_ZSTD_LEAN ON CACHE BOOL
+    "Omit zstd LDM/target-block-size code SEDSnet never uses" FORCE)
+# The SDK compiles zstd as fat LTO objects with this firmware's GCC. The
+# release link has no -flto, but GCC's linker plugin still optimises those
+# objects together at link time; frames are unchanged. SDKs older than 6.0.2
+# ignore the setting.
+set(SEDSNET_ZSTD_LTO ON CACHE BOOL
+    "Compile SEDSnet's zstd for link-time optimisation" FORCE)
 set(SEDSNET_EMBEDDED_BUILD ON CACHE BOOL "" FORCE)
 set(SEDSNET_ENABLE_CRYPTOGRAPHY OFF CACHE BOOL
     "Preserve the current unencrypted CAN deployment and reduce flash/RAM use" FORCE)
