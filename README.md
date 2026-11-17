@@ -9,7 +9,7 @@ SEDSNet 4.0.31 uses final-destination ACKs to gate ordered streams across
 shared CAN and Gateway; retries preserve order without hop-level CAN sequencing.
 
 This firmware targets the STM32G491 and builds as a SEDS LaunchCore factory
-image. CMake fetches rolling SEDSNet `dev` and the LaunchCore v1.0.0 release during
+image. CMake fetches rolling SEDSNet `main` and the LaunchCore v1.0.0 release during
 configure; no Git submodules are required.
 
 LaunchCore generates both GNU linker scripts directly from
@@ -151,9 +151,9 @@ Use `--no-watchdog` only for a diagnostic build.
 
 ## SEDSnet build configuration
 
-Use `python3 build.py build --release --sedsnet-ref main` to build the current
-SEDSnet `main` commit. The same option is accepted by `test` and `flash`.
-Normal builds select `dev`. Each branch has its own source cache;
+Use `python3 build.py build --release --sedsnet-ref dev` to build the current
+SEDSnet `dev` commit. The same option is accepted by `test` and `flash`.
+Normal builds continue to select `main`. Each branch has its own source cache;
 when the network is unavailable the last usable on-disk source is retained.
 The selected revision is printed during configure. An explicit CMake source
 override remains local and is never fetched or reset.
@@ -164,7 +164,7 @@ override remains local and is never fetched or reset.
 python3 build.py build --release
 ```
 
-This selects the latest compatible SEDSnet `dev` commit and initializes a 2048-byte,
+This selects the latest compatible SEDSnet `main` commit and initializes a 2048-byte,
 16-handle arena before the router starts. It uses the existing allocator
 pool and leaves ThreadX scheduling unchanged. Compression stays disabled.
 Use `--packet-store heap` to disable the arena, including in a previously enabled build cache.
