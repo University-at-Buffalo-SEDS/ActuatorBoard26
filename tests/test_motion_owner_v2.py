@@ -103,6 +103,25 @@ int main(int argc,char**argv){
  assert(thread_comm_request_manual_abort()==0);assert(fill_settings_handle(r,&p)==0&&reply[34]==3&&reply[52]!=reply[20]);
  assert(gpio_on==1&&wakes==0&&pulses_started==0);
  }
+ else if(!strcmp(argv[1],"aux_after_step")){
+ /* An AUX QD right after a GS network time step is accepted: the fill cutoff
+  * and the last QD were stamped in the old epoch and the window is judged by
+  * SEDSnet across the step. */
+ mode=FILL_MODE_AUX;network_now=UINT64_C(1794183589988);settings_cutoff=board_stamp_pack(0,network_now-60000U);
+ const uint64_t before=board_stamp_pack(0,network_now);
+ start_selected_plumbing_retract(before,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==before);
+ tick=45100;service_auxiliary_retract();assert(!g_fill_motion.active);
+ stamp_fixture_step(network_now-UINT64_C(14400000));network_now+=300U;
+ const uint64_t after=board_stamp_pack(1,network_now-200U);
+ tick=45200;start_selected_plumbing_retract(after,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==after&&gpio_on==2);
+ tick=90300;service_auxiliary_retract();assert(!g_fill_motion.active);
+ /* The old-base QD never starts again; neither does a stale new-base one. */
+ tick=90400;start_selected_plumbing_retract(before,thread_comm_manual_epoch());assert(!g_fill_motion.active);
+ start_selected_plumbing_retract(board_stamp_pack(1,network_now-6000U),thread_comm_manual_epoch());assert(!g_fill_motion.active);
+ /* A QD stamped in a newer epoch while this board re-anchors starts. */
+ stamp_fixture_hear_newer(2,1500U);const uint64_t newer=board_stamp_pack(2,network_now-UINT64_C(3600000));
+ start_selected_plumbing_retract(newer,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==newer&&gpio_on==3);
+ }
  else if(!strcmp(argv[1],"stale")){assert(thread_comm_publish_command_cutoff(10000)==0);start_selected_plumbing_retract(10000,thread_comm_manual_epoch());assert(!wakes&&!pulses_started);}
  else assert(0);
  assert(!ports[1].ODR&&!ports[2].ODR&&!ports[3].ODR&&!ports[4].ODR);return 0;
@@ -135,6 +154,6 @@ bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){F
   with tempfile.TemporaryDirectory(prefix='motion-actual-owner-')as d:
    p=Path(d);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);exe=p/'test'
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DTELEMETRY_ENABLED','-I'+str(Path(sdk['header']).parent),'-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'tests/fixtures'),str(p/'test.c'),str(ROOT/'Core/Src/fill_motion.c'),str(ROOT/'Core/Src/fill_motion_status.c'),'-o',str(exe)],check=True)
-   for case in ['stop_wake','newer_wake','stop_recover_newer','legacy_minimum','legacy_early_complete','aux_minimum','stop_before_service','timer_failure','owner_busy','stale','query_wire']:
+   for case in ['stop_wake','newer_wake','stop_recover_newer','legacy_minimum','legacy_early_complete','aux_minimum','stop_before_service','timer_failure','owner_busy','stale','query_wire','aux_after_step']:
     with self.subTest(case=case):subprocess.run([str(exe),case],check=True)
 if __name__=='__main__':unittest.main()
