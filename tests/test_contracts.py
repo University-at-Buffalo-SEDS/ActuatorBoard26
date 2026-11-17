@@ -77,7 +77,7 @@ class FirmwareContracts(unittest.TestCase):
         self.assertFalse((ROOT / ".gitmodules").exists())
         self.assertIn("FetchContent_Declare(\n    sedsnet", cmake)
         self.assertIn("GIT_TAG ${SEDSNET_GIT_REF}", cmake)
-        self.assertIn('set(SEDSNET_GIT_REF "main" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
+        self.assertIn('set(SEDSNET_GIT_REF "dev" CACHE STRING', (ROOT / "cmake/sedsnet_source.cmake").read_text())
         self.assertIn("FetchContent_Declare(\n    sedslaunchcore", cmake)
         self.assertIn("GIT_TAG e2eea7d94245168dc63d31e160f4cb7bdc7688c3", cmake)
         self.assertIn("launchcore_require_strict_api", cmake)
