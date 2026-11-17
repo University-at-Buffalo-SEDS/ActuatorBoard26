@@ -42,7 +42,7 @@ static void HAL_GPIO_WritePin(Port*p,unsigned pin,unsigned value){assert(g_threa
 static bool fill_settings_ready(void){return settings_ready;}
 static uint8_t fill_settings_mode(void){return mode;}
 static uint64_t fill_settings_cutoff(void){return settings_cutoff;}
-
+static uint64_t telemetry_unix_ms(void){return network_now;}
 static unsigned publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 static void stepperSetDir(int*p,unsigned d){(void)p;(void)d;assert(!g_thread_comm_state_mutex.locked);}
 static int stepperWakeBegin(int*p){(void)p;assert(g_thread_comm_state_mutex.locked);wakes++;return 0;}
@@ -123,8 +123,8 @@ bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){F
 '''+''.join(function(settings,name)+'\n' for name in ['decode64','encode64','fresh','decode32','encode32','emit_motion_v2','emit','fill_settings_handle'])
   code=code.replace('QUERY_ACTUAL',query)
   owner=(ROOT/'Core/Src/main_task.c').read_text()
-  names=['fill_station_now','fill_after_cutoff','all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked','fill_monotonic_ms','fill_minimum_start_ms','next_fill_serial','prepare_legacy_start','wake_legacy_start','finish_legacy_start','start_plumbing_retract','start_aux_locked','start_selected_plumbing_retract','service_aux_locked','service_auxiliary_retract','service_legacy_locked','service_plumbing_retract','invalidate_motion_provenance_locked','fill_snapshot_v2_locked','main_task_fill_snapshot_v2']
-  actual='typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;\n#include "sedsnet.h"\nuint64_t board_recovery_station_now(SedsRouter*r);\n'+''.join(function(owner,name)+'\n' for name in names)
+  names=['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked','fill_monotonic_ms','fill_minimum_start_ms','next_fill_serial','prepare_legacy_start','wake_legacy_start','finish_legacy_start','start_plumbing_retract','start_aux_locked','start_selected_plumbing_retract','service_aux_locked','service_auxiliary_retract','service_legacy_locked','service_plumbing_retract','invalidate_motion_provenance_locked','fill_snapshot_v2_locked','main_task_fill_snapshot_v2']
+  actual='typedef struct {uint64_t source,now;uint32_t epoch,serial;uint8_t result;bool ticket,woke;} FillStart;\n'+''.join(function(owner,name)+'\n' for name in names)
   ports=''.join(f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n' for i,name in enumerate(['BACKUP_VALVE_EN','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']))
   code=code.replace('ACTUAL',actual).replace('PORTS',ports)
   sdk=prepare_native_sdk(ROOT)

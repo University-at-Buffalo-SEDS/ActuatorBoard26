@@ -54,7 +54,7 @@ int HAL_TIMEx_PWMN_Start(TIM_HandleTypeDef*h,uint32_t channel){assert(h==&htim1&
 static bool fill_settings_ready(void){return settings_ready;}
 static uint8_t fill_settings_mode(void){return mode;}
 static uint64_t fill_settings_cutoff(void){return settings_cutoff;}
-static uint64_t board_recovery_station_now(void*r){(void)r;return network_now;}
+static uint64_t telemetry_unix_ms(void){return network_now;}
 static unsigned publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 unsigned long tx_time_get(void){return tick;}
 ACTUAL_OWNER
