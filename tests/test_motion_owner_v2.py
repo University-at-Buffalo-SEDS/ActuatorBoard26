@@ -48,6 +48,8 @@ static void HAL_GPIO_WritePin(Port*p,unsigned pin,unsigned value){assert(g_threa
 static bool fill_settings_ready(void){return settings_ready;}
 static uint8_t fill_settings_mode(void){return mode;}
 static uint64_t fill_settings_cutoff(void){return settings_cutoff;}
+static uint16_t settings_identity;
+static uint16_t fill_settings_identity(void){return settings_identity;}
 static unsigned publish_umbilical_status(unsigned cmd,unsigned value){(void)cmd;(void)value;return 0;}
 static void stepperSetDir(int*p,unsigned d){(void)p;(void)d;assert(!g_thread_comm_state_mutex.locked);}
 static int stepperWakeBegin(int*p){(void)p;assert(g_thread_comm_state_mutex.locked);wakes++;return 0;}
@@ -96,6 +98,8 @@ int main(int argc,char**argv){
  mode=FILL_MODE_AUX;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());uint8_t q[33]={2,0};q[4]=55;q[24]=77;uint32_t ep=SEDS_EP_ACTUATOR_BOARD;SedsPacketView p={.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS,.sender="GS",.sender_len=2,.endpoints=&ep,.num_endpoints=1,.payload=q,.payload_len=32,.timestamp=10000};SedsRouter*r=(SedsRouter*)&ep;
  assert(fill_settings_handle(r,&p)==SEDS_OK&&reported_type==SEDS_DT_AB_FILL_MOTION_STATUS_V2&&reported_count==56&&reply[0]==2&&reply[1]==0&&reply[4]==55&&reply[24]==77&&reply[32]==1&&reply[33]==1&&reply[34]==1&&reply[35]==1&&reply[40]==0x10&&reply[41]==0x27&&reply[52]==1);
  uint8_t old[56];memcpy(old,reply,56);q[0]=1;assert(fill_settings_handle(r,&p)==0&&reported_type==SEDS_DT_AB_FILL_DRIVE_STATUS&&reported_count==40&&reply[0]==1&&reply[34]==0&&reply[35]==0);assert(!memcmp(reply+4,old+4,28)&&!memcmp(reply+36,old+36,4));
+ /* v1 bytes 34..35: the saved selection's resync identity, little-endian. */
+ settings_identity=0xBEEFU;assert(fill_settings_handle(r,&p)==0&&reported_count==40&&reply[34]==0xEF&&reply[35]==0xBE);settings_identity=0U;
  q[0]=2;q[1]=1;unsigned before=reports;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);q[1]=0;
  p.payload_len=31;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);p.payload_len=33;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);p.payload_len=32;
  q[3]=1;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG);q[3]=0;q[4]=0;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG);q[4]=55;p.sender="PB";assert(fill_settings_handle(r,&p)==SEDS_PERMISSION_DENIED);p.sender="GS";

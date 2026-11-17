@@ -21,6 +21,8 @@ static _Atomic bool selected_ready;
 static _Atomic bool absent_candidate;
 /* Only main owner reads/writes this64-bit value, including its bounded callbacks. */
 static uint64_t selected_cutoff;
+/* fill_settings_identity() of the applied record, readable from any thread. */
+static _Atomic uint16_t selected_identity;
 #ifdef TELEMETRY_ENABLED
 static _Atomic bool reconcile_pending;
 static uint8_t reconcile_mode;
@@ -39,6 +41,13 @@ static bool decode_record(const uint8_t*p,size_t n,uint8_t*mode,uint64_t*source)
 uint8_t fill_settings_mode(void){return selected_mode;}
 bool fill_settings_ready(void){return selected_ready;}
 uint64_t fill_settings_cutoff(void){return selected_cutoff;}
+uint16_t fill_settings_identity_of(uint64_t source){
+ uint64_t ms=board_stamp_ms(source);
+ if(!ms)return 0U;
+ uint16_t id=(uint16_t)(ms^(ms>>16)^(ms>>32));
+ return id?id:1U;
+}
+uint16_t fill_settings_identity(void){return selected_ready?selected_identity:0U;}
 #ifdef TELEMETRY_ENABLED
 #include "sedsnet_config.h"
 static TX_MUTEX settings_mutex;
@@ -55,7 +64,7 @@ static bool cache_enter(void){
 static bool cache_leave(void){if(tx_mutex_put(&settings_mutex)==TX_SUCCESS)return true;selected_ready=false;settings_initialized=false;return false;}
 #endif
 void fill_settings_restore(void){
- selected_ready=false;selected_mode=FILL_MODE_UNKNOWN;selected_cutoff=0U;absent_candidate=false;
+ selected_ready=false;selected_mode=FILL_MODE_UNKNOWN;selected_cutoff=0U;selected_identity=0U;absent_candidate=false;
 #ifdef TELEMETRY_ENABLED
  reconcile_pending=false;
  if(tx_mutex_create(&settings_mutex,"fill_settings",TX_INHERIT)!=TX_SUCCESS)return;
@@ -72,7 +81,7 @@ void fill_settings_restore(void){
  bool released=persistent_store_leave();
  if(released&&absent)absent_candidate=true;
  if(status==LAUNCHCORE_PERSIST_STORAGE_ERROR||status==LAUNCHCORE_PERSIST_CORRUPT)persistent_store_note_failure();
- if(valid&&released){selected_cutoff=source;selected_mode=mode;selected_ready=true;}
+ if(valid&&released){selected_cutoff=source;selected_identity=fill_settings_identity_of(source);selected_mode=mode;selected_ready=true;}
 }
 #ifdef TELEMETRY_ENABLED
 /* FDRV window: at most 5 s old or 1 s ahead, judged by SEDSnet across steps. */
@@ -95,6 +104,8 @@ static SedsResult emit(SedsRouter*r,const uint8_t request[32],uint8_t result){
  uint32_t remaining=0U;
  if(!main_task_fill_snapshot(response+2,response+32,response+33,&remaining))response[1]=6U;
  encode32(response+36,remaining);
+ /* Station resync identity of the saved selection (0: no station record). */
+ const uint16_t identity=fill_settings_identity();response[34]=(uint8_t)identity;response[35]=(uint8_t)(identity>>8);
  /* RAM-only critical commissioning barrier overrides retryable FDRV IO. */
  if(persistent_store_bootstrap_pending())response[1]=5U;
  return seds_router_log_queue_typed(r,SEDS_DT_AB_FILL_DRIVE_STATUS,response,40U,1U,SEDS_EK_UNSIGNED);
@@ -140,7 +151,7 @@ SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
 }
 static uint8_t prepare_mode(void*context){return main_task_fill_prepare_mode(*(uint8_t*)context);}
 typedef struct {uint8_t mode;uint64_t source;} Publish;
-static void publish_mode(void*context){Publish*p=context;selected_cutoff=p->source;selected_mode=p->mode;selected_ready=true;reconcile_pending=false;absent_candidate=false;main_task_fill_mode_changed();}
+static void publish_mode(void*context){Publish*p=context;selected_cutoff=p->source;selected_identity=fill_settings_identity_of(p->source);selected_mode=p->mode;selected_ready=true;reconcile_pending=false;absent_candidate=false;main_task_fill_mode_changed();}
 static bool store_record(uint8_t mode,uint64_t source,bool initialize_absent){
  if(!persistent_store_enter())return false;
  /* Consume before any read/write attempt; failed/uncertain IO cannot become
