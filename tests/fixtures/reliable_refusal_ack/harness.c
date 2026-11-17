@@ -46,10 +46,6 @@ uint8_t board_recovery_floor_is_healthy(void){return 1U;}
 uint8_t board_recovery_floor_read_cutoff(uint64_t*c){*c=0U;return 1U;}
 bool bootstrap_request_fresh(uint64_t s,uint64_t n){(void)s;(void)n;return true;}
 UINT thread_comm_publish_command_cutoff(uint64_t c){(void)c;return TX_SUCCESS;}
-UINT thread_comm_rebase_command_cutoff(uint64_t c){(void)c;return TX_SUCCESS;}
-uint8_t board_recovery_floor_cached_cutoff(uint64_t*c){*c=0U;return 1U;}
-#define FSTATE_RX() ((void)0)
-#define FSTATE_OUT(pkt, result, reason) (result)
 uint8_t thread_comm_get_abort(void){return aborted;}
 static uint8_t applied_state=255U;
 UINT thread_comm_apply_network_flight_state(uint8_t s,uint64_t t){(void)t;if(apply_result==TX_SUCCESS){applied++;applied_state=s;}return apply_result;}
