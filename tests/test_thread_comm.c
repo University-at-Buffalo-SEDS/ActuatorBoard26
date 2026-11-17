@@ -1,4 +1,5 @@
 #include "thread_comm.h"
+#include "board_refusal.h"
 #include <assert.h>
 #include <stdbool.h>
 /* Queue/state-only unit: storage is already healthy, no commissioning is in
@@ -59,6 +60,26 @@ int main(void)
     thread_comm_msg_t empty;
     assert(thread_comm_receive(&empty, TX_NO_WAIT) == TX_NO_INSTANCE);
 
+    /* A refused operator command records why for the station (board_refusal.h). */
+    assert(board_refusal_current() == 0U);
+    assert(thread_comm_refusal_reason(4000ULL, 0U) == BOARD_REFUSAL_NONE);
+    assert(thread_comm_publish_command_cutoff(5000ULL) == TX_SUCCESS);
+    const thread_comm_msg_t late = {.cmd = 8U, .timestamp_ms = 4000ULL};
+    assert(thread_comm_admit_network(late, late.timestamp_ms) == THREAD_COMM_STALE_TIMESTAMP);
+    assert(board_refusal_current() == ((1U << 16) | (8U << 8) | BOARD_REFUSAL_BELOW_FLOOR));
+    const thread_comm_msg_t automatic = {.cmd = 0x80U | 9U, .timestamp_ms = 4000ULL};
+    assert(thread_comm_admit_network(automatic, automatic.timestamp_ms) == THREAD_COMM_STALE_TIMESTAMP);
+    assert(board_refusal_current() >> 16 == 1U); /* GS sequence commands are not recorded */
+    const uint32_t epoch = thread_comm_manual_epoch();
+    assert(thread_comm_refusal_reason(6000ULL, epoch) == BOARD_REFUSAL_NONE);
+    assert(thread_comm_refusal_reason(4000ULL, epoch) == BOARD_REFUSAL_BELOW_FLOOR);
+    assert(thread_comm_refusal_reason(6000ULL, epoch + 1U) == BOARD_REFUSAL_RECOVERY_PENDING);
+    const thread_comm_msg_t fresh = {.cmd = 9U, .timestamp_ms = 6000ULL};
+    assert(thread_comm_admit_network(fresh, fresh.timestamp_ms) == TX_SUCCESS);
+    assert(board_refusal_current() >> 16 == 1U); /* an accepted command records nothing */
+    thread_comm_msg_t drained;
+    assert(thread_comm_receive(&drained, TX_NO_WAIT) == TX_SUCCESS && drained.cmd == 9U);
+
     assert(thread_comm_set_shared_value(-42) == TX_SUCCESS);
     assert(thread_comm_get_shared_value() == -42);
     assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_ARMED) == TX_SUCCESS);
@@ -73,5 +94,8 @@ int main(void)
     assert(thread_comm_set_abort(0U) == TX_SUCCESS);
     assert(thread_comm_get_abort() == 1U);
     assert(retained_abort == 1U);
+    assert(thread_comm_refusal_reason(6000ULL, 0U) == BOARD_REFUSAL_ABORT);
+    assert(thread_comm_admit_network(fresh, 7000ULL) == THREAD_COMM_STALE_TIMESTAMP);
+    assert(board_refusal_current() == ((2U << 16) | (9U << 8) | BOARD_REFUSAL_ABORT));
     return 0;
 }

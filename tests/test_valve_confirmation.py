@@ -23,7 +23,9 @@ enum { CMD_NITROGEN_OPEN=9, CMD_NITROUS_OPEN=10,
        CMD_NITROGEN_CLOSE=12, CMD_NITROUS_CLOSE=13, CMD_IGNITER_ON=6, CMD_IGNITER_OFF=7 };
 static int n2_solenoid, n20_solenoid, reject_open, aborted;
 static uint8_t g_nitrogen_open, g_nitrous_open,g_igniter_on;
-static int count, reported_command, reported_state;
+static int count, reported_command, reported_state, noted_command, noted_reason;
+static void board_refusal_note(uint8_t command, uint8_t reason) { noted_command=command; noted_reason=reason; }
+static uint8_t thread_comm_refusal_reason(uint64_t t, uint32_t epoch) { assert(t==501&&epoch==7); return aborted ? 8U : 0U; }
 static int solenoidOn(int *p) { (void)p; return reject_open ? -1 : 0; }
 static void solenoidOff(int *p) { (void)p; }
 static uint8_t g_launch_sequence_active,g_launch_sequence_igniter_started,g_launch_sequence_holdoff_active;
@@ -55,8 +57,11 @@ int main(void) {
         assert(count==1 && reported_command==opens[i] && reported_state==0);
         count=0; command(closes[i]);
         assert(count==1 && reported_state==0);
+        assert(noted_command==0 && noted_reason==0);
         aborted=1; count=0; command(opens[i]);
         assert(count==0 && !g_nitrogen_open && !g_nitrous_open);
+        /* The refused press tells the station why (board_refusal.h ABORT). */
+        assert(noted_command==opens[i] && noted_reason==8); noted_command=noted_reason=0;
     }
 }
 '''

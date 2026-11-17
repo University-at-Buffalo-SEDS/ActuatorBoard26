@@ -3,6 +3,7 @@
 #include "AB-Threads.h"
 #include "tx_api.h"
 #include "thread_comm.h"
+#include "board_refusal.h"
 #include "board_recovery.h"
 #include "board_bootstrap_storage.h"
 #include "main.h"
@@ -188,14 +189,24 @@ void main_task_force_outputs_safe_off(void)
 
 /* source: the command's packed (epoch, ms) stamp; ordering against the fill
  * cutoff and provenance compares packed stamps across network time steps. */
-typedef struct {uint64_t source;uint32_t epoch,serial;uint8_t result;bool fresh,ticket,woke;} FillStart;
+/* reason: board_refusal.h code for a refused start; BOARD_REFUSAL_ASK_OWNER
+ * asks thread_comm afterwards (the visit only says "blocked"). */
+typedef struct {uint64_t source;uint32_t epoch,serial;uint8_t result,reason;bool fresh,ticket,woke;} FillStart;
 static bool next_fill_serial(uint32_t*out){if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return false;}*out=++g_fill_start_serial;return true;}
+static uint8_t fill_gate_reason(bool blocked,uint32_t epoch,const FillStart*q,uint8_t mode){
+ if(blocked||q->epoch!=epoch)return BOARD_REFUSAL_ASK_OWNER;
+ if(g_fill_drive_fault)return BOARD_REFUSAL_DRIVE_FAULT;
+ if(!fill_settings_ready())return BOARD_REFUSAL_DRIVE_NOT_LOADED;
+ if(mode!=FILL_MODE_UNKNOWN&&fill_settings_mode()!=mode)return BOARD_REFUSAL_WRONG_DRIVE;
+ if(fill_settings_cutoff()!=0U&&q->source<=fill_settings_cutoff())return BOARD_REFUSAL_BEFORE_DRIVE_CHANGE;
+ return BOARD_REFUSAL_NONE;
+}
 static void prepare_legacy_start(bool blocked,uint32_t epoch,void*context){
  FillStart*q=context;
- if(blocked||q->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||(fill_settings_cutoff()!=0U&&q->source<=fill_settings_cutoff()))return;
- if(g_plumbing_retract_active||g_fill_motion.active){q->result=FILL_MOTION_BUSY;return;}
- if(q->source&&g_fill_provenance.source&&q->source<=g_fill_provenance.source){q->result=q->source==g_fill_provenance.source?FILL_MOTION_DUPLICATE:FILL_MOTION_STALE;return;}
- if(!next_fill_serial(&q->serial))return;
+ if((q->reason=fill_gate_reason(blocked,epoch,q,FILL_MODE_STEPPER))!=BOARD_REFUSAL_NONE)return;
+ if(g_plumbing_retract_active||g_fill_motion.active){q->result=FILL_MOTION_BUSY;q->reason=BOARD_REFUSAL_BUSY;return;}
+ if(q->source&&g_fill_provenance.source&&q->source<=g_fill_provenance.source){q->result=q->source==g_fill_provenance.source?FILL_MOTION_DUPLICATE:FILL_MOTION_STALE;q->reason=q->result==FILL_MOTION_STALE?BOARD_REFUSAL_STALE:BOARD_REFUSAL_NONE;return;}
+ if(!next_fill_serial(&q->serial)){q->reason=BOARD_REFUSAL_DRIVE_FAULT;return;}
  q->epoch=epoch;q->ticket=true;
 }
 static void wake_legacy_start(bool blocked,uint32_t epoch,void*context){
@@ -213,42 +224,54 @@ static void finish_legacy_start(bool blocked,uint32_t epoch,void*context){
  if(!q->ticket||q->serial!=g_fill_start_serial)return;
  if(blocked||epoch!=q->epoch||!fill_settings_ready()||fill_settings_mode()!=FILL_MODE_STEPPER||(fill_settings_cutoff()!=0U&&q->source<=fill_settings_cutoff())){
   if(!g_plumbing_retract_active&&!g_fill_motion.active){stepperSleep(&stepper);all_fill_outputs_off();fill_motion_provenance_cancel(&g_fill_provenance,false);}
-  q->result=FILL_MOTION_STALE;return;
+  q->result=FILL_MOTION_STALE;q->reason=fill_gate_reason(blocked,epoch,q,FILL_MODE_STEPPER);return;
  }
- if(!q->woke){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);q->result=FILL_MOTION_FAULT;return;}
+ if(!q->woke){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);q->result=FILL_MOTION_FAULT;q->reason=BOARD_REFUSAL_DRIVE_FAULT;return;}
  if(stepperStartMoveTimer(&stepper,PLUMBING_RETRACT_STEPS,PLUMBING_RETRACT_STEP_PERIOD_US)==STEP_OK){
   g_plumbing_retract_steps_remaining=PLUMBING_RETRACT_STEPS;g_plumbing_retract_active=1U;
   fill_motion_provenance_start(&g_fill_provenance,q->source,epoch,FILL_ACTION_RETRACT,fill_minimum_start_ms());q->result=FILL_MOTION_STARTED;
- }else{g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);q->result=FILL_MOTION_FAULT;}
+ }else{g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);q->result=FILL_MOTION_FAULT;q->reason=BOARD_REFUSAL_DRIVE_FAULT;}
 }
-static void start_plumbing_retract(uint64_t source,uint32_t command_epoch){
- FillStart request={.source=source,.epoch=command_epoch,.result=FILL_MOTION_FAULT};
- if(!thread_comm_fill_visit_epoch(source,prepare_legacy_start,&request)||!request.ticket)return;
+/* The operator-visible reason a QD retract start was refused, or NONE. */
+static uint8_t fill_refusal(const FillStart*q,uint64_t source,uint32_t command_epoch){
+ if(q->reason!=BOARD_REFUSAL_ASK_OWNER)return q->reason;
+ const uint8_t reason=thread_comm_refusal_reason(source,command_epoch);
+ return reason!=BOARD_REFUSAL_NONE?reason:BOARD_REFUSAL_RECOVERY_PENDING; /* owner epoch moved on */
+}
+static uint8_t start_plumbing_retract(uint64_t source,uint32_t command_epoch){
+ FillStart request={.source=source,.epoch=command_epoch,.result=FILL_MOTION_FAULT,.reason=BOARD_REFUSAL_ASK_OWNER};
+ if(!thread_comm_fill_visit_epoch(source,prepare_legacy_start,&request)||!request.ticket)return fill_refusal(&request,source,command_epoch);
  /* Preserve the legacy report; V2 alone proves actual timer acceptance. */
  g_plumbing_retracted=1U;(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,g_plumbing_retracted);
  stepperSetDir(&stepper,STEP_CW);
  (void)thread_comm_fill_visit_epoch(source,wake_legacy_start,&request);
  if(request.woke)request.woke=stepperWakeWait(&stepper)==STEP_OK;
+ request.reason=BOARD_REFUSAL_NONE;
  (void)thread_comm_fill_visit_epoch(source,finish_legacy_start,&request);
+ return fill_refusal(&request,source,command_epoch);
 }
 static void start_aux_locked(bool blocked,uint32_t epoch,void*context)
 {
  FillStart*request=context;
- if(blocked||request->epoch!=epoch||g_fill_drive_fault||!fill_settings_ready()||request->source<=fill_settings_cutoff())return;
- if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);return;}
+ if((request->reason=fill_gate_reason(blocked,epoch,request,FILL_MODE_UNKNOWN))!=BOARD_REFUSAL_NONE)return;
+ if(request->source<=fill_settings_cutoff()){request->reason=BOARD_REFUSAL_BEFORE_DRIVE_CHANGE;return;}
+ if(g_fill_start_serial==UINT32_MAX){g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);request->reason=BOARD_REFUSAL_DRIVE_FAULT;return;}
  request->result=fill_motion_start(&g_fill_motion,fill_settings_mode(),FILL_ACTION_RETRACT,request->source,request->fresh,fill_monotonic_ms());
+ static const uint8_t reasons[]={[FILL_MOTION_BUSY]=BOARD_REFUSAL_BUSY,[FILL_MOTION_STALE]=BOARD_REFUSAL_STALE,
+  [FILL_MOTION_UNSUPPORTED]=BOARD_REFUSAL_WRONG_DRIVE,[FILL_MOTION_FAULT]=BOARD_REFUSAL_DRIVE_FAULT};
+ request->reason=request->result<sizeof reasons?reasons[request->result]:BOARD_REFUSAL_NONE;
  if(request->result==FILL_MOTION_STARTED){
   g_plumbing_retracted=0U;HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port,BACKUP_VALVE_EN_Pin,GPIO_PIN_SET);
-  if((BACKUP_VALVE_EN_GPIO_Port->ODR&BACKUP_VALVE_EN_Pin)==0U){fill_stop_locked(true,0);g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);request->result=FILL_MOTION_FAULT;}
+  if((BACKUP_VALVE_EN_GPIO_Port->ODR&BACKUP_VALVE_EN_Pin)==0U){fill_stop_locked(true,0);g_fill_drive_fault=true;fill_motion_provenance_cancel(&g_fill_provenance,true);request->result=FILL_MOTION_FAULT;request->reason=BOARD_REFUSAL_DRIVE_FAULT;}
   else{(void)next_fill_serial(&request->serial);fill_motion_provenance_start(&g_fill_provenance,request->source,epoch,FILL_ACTION_RETRACT,fill_minimum_start_ms());}
  }
 }
-static void start_selected_plumbing_retract(uint64_t source,uint32_t command_epoch)
+static uint8_t start_selected_plumbing_retract(uint64_t source,uint32_t command_epoch)
 {
- if(!fill_settings_ready())return;
+ if(!fill_settings_ready())return BOARD_REFUSAL_DRIVE_NOT_LOADED;
  if(fill_settings_mode()==FILL_MODE_STEPPER){
-  if(fill_settings_cutoff()!=0U&&source<=fill_settings_cutoff())return;
-  start_plumbing_retract(source,command_epoch);return;
+  if(fill_settings_cutoff()!=0U&&source<=fill_settings_cutoff())return BOARD_REFUSAL_BEFORE_DRIVE_CHANGE;
+  return start_plumbing_retract(source,command_epoch);
  }
  /* The QD window is judged by SEDSnet before entering the fill owner (no SDK
   * under it): a QD stamped right after a GS time step is fresh. */
@@ -256,10 +279,11 @@ static void start_selected_plumbing_retract(uint64_t source,uint32_t command_epo
 #ifdef TELEMETRY_ENABLED
  fresh=board_recovery_stamp_fresh(NULL,source,FILL_MOTION_FRESH_AGE_MS,FILL_MOTION_FRESH_AHEAD_MS)!=0U;
 #endif
- FillStart request={.source=source,.epoch=command_epoch,.fresh=fresh,.result=FILL_MOTION_UNSUPPORTED};
+ FillStart request={.source=source,.epoch=command_epoch,.fresh=fresh,.result=FILL_MOTION_UNSUPPORTED,.reason=BOARD_REFUSAL_ASK_OWNER};
  (void)thread_comm_fill_visit_epoch(source,start_aux_locked,&request);
  /* No early completed status. Repeated active requests cannot extend45s. */
  if(request.result==FILL_MOTION_STARTED)(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,0U);
+ return fill_refusal(&request,source,command_epoch);
 }
 static void service_aux_locked(bool blocked,void*context)
 {
@@ -387,16 +411,21 @@ static void handle_command(thread_comm_msg_t cmd,uint32_t command_epoch)
     }
     if (!persistent_store_controls_ready()) {
         if(!thread_comm_launch_continuity())main_task_force_outputs_safe_off();
+        board_refusal_note(cmd.cmd,thread_comm_refusal_reason(cmd.timestamp_ms,0U));
         return;
     }
 
     if (thread_comm_get_abort() != 0U)
     {
         main_task_force_outputs_safe_off();
+        board_refusal_note(cmd.cmd,BOARD_REFUSAL_ABORT);
         return;
     }
 
-    if (!thread_comm_command_timestamp_current(cmd.timestamp_ms)) return;
+    if (!thread_comm_command_timestamp_current(cmd.timestamp_ms)) {
+        board_refusal_note(cmd.cmd,thread_comm_refusal_reason(cmd.timestamp_ms,0U));
+        return;
+    }
 
     if ((cmd.cmd & THREAD_COMM_AUTOMATIC_TAG) != 0U) {
         if (thread_comm_apply_automatic_owned(cmd,command_epoch,apply_automatic_valve) != 0U) {
@@ -421,11 +450,11 @@ static void handle_command(thread_comm_msg_t cmd,uint32_t command_epoch)
         else if(cmd.cmd==CMD_NITROGEN_OPEN||cmd.cmd==CMD_NITROGEN_CLOSE)(void)publish_umbilical_status(CMD_NITROGEN_OPEN,g_nitrogen_open);
         else (void)publish_umbilical_status(CMD_NITROUS_OPEN,g_nitrous_open);
         publish_expected_outputs();
-      }
+      }else board_refusal_note(cmd.cmd,thread_comm_refusal_reason(cmd.timestamp_ms,command_epoch));
       return;
     }
     switch(cmd.cmd){
-    case CMD_RETRACT_PLUMBING:start_selected_plumbing_retract(cmd.timestamp_ms,command_epoch);break;
+    case CMD_RETRACT_PLUMBING:board_refusal_note(cmd.cmd,start_selected_plumbing_retract(cmd.timestamp_ms,command_epoch));break;
     case CMD_EXTEND_PLUMBING:(void)thread_comm_fill_visit(invalidate_motion_provenance_locked,0);break;
     case CMD_IGNITER_SEQUENCE:start_launch_sequence(cmd.timestamp_ms,command_epoch);break;
     default:break;

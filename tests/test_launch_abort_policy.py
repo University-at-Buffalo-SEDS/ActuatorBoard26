@@ -107,6 +107,8 @@ static SedsResult board_recovery_sync_command_cutoff(void){return SEDS_OK;}
 typedef struct {const uint8_t*payload;size_t payload_len;uint64_t timestamp;const char*sender;size_t sender_len;uint32_t ty;uint16_t time_epoch;} SedsPacketView;
 #include "board_stamp.h"
 static uint8_t board_recovery_command_is_stale(const SedsPacketView*p){(void)p;return 0;}
+#include "board_refusal.h"
+static uint8_t board_recovery_command_stale_reason(const SedsPacketView*p){(void)p;return 0;}
 static uint8_t board_recovery_managed_update_allowed(const SedsPacketView*p){(void)p;return 1;}
 static uint8_t board_recovery_automatic_is_stale(const SedsPacketView*p){(void)p;return 0;}
 static struct{void*r;}g_router={(void*)1};

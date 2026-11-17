@@ -3,6 +3,7 @@
 #include "board_abort_latch.h"
 #include "board_recovery.h"
 #include "board_recovery_floor.h"
+#include "board_refusal.h"
 #include "board_stamp.h"
 #include "bootstrap_owner.h"
 #include <stdatomic.h>
@@ -384,6 +385,27 @@ UINT thread_comm_publish_command_cutoff(uint64_t cutoff_ms)
     (void)tx_mutex_put(&g_thread_comm_state_mutex);
     return result;
 }
+/* Why ordinary admission refuses a command with this stamp and owner epoch
+ * now (board_refusal.h); NONE when it would pass. Diagnostics only. */
+static uint8_t refusal_reason_locked(uint64_t timestamp_ms,uint32_t epoch)
+{
+    if (g_command_admission_fault) return BOARD_REFUSAL_OWNER_FAULT;
+    if (g_thread_comm_abort) return BOARD_REFUSAL_ABORT;
+    if (g_recovery_pending || (epoch != 0U && epoch != g_thread_comm_recovery_epoch)) return BOARD_REFUSAL_RECOVERY_PENDING;
+    if (!persistent_store_controls_ready())
+        return persistent_store_bootstrap_pending() ? BOARD_REFUSAL_NOT_COMMISSIONED : BOARD_REFUSAL_STORE_NOT_READY;
+    if (g_fill_configuration_pending) return BOARD_REFUSAL_BUSY;
+    if (timestamp_ms != 0U && !network_timestamp_allowed_locked(timestamp_ms)) return BOARD_REFUSAL_BELOW_FLOOR;
+    return BOARD_REFUSAL_NONE;
+}
+uint8_t thread_comm_refusal_reason(uint64_t timestamp_ms,uint32_t epoch)
+{
+    if (g_thread_comm_initialized == 0U ||
+        tx_mutex_get(&g_thread_comm_state_mutex, TX_WAIT_FOREVER) != TX_SUCCESS) return BOARD_REFUSAL_OWNER_FAULT;
+    const uint8_t reason = refusal_reason_locked(timestamp_ms, epoch);
+    (void)tx_mutex_put(&g_thread_comm_state_mutex);
+    return reason;
+}
 UINT thread_comm_admit_network(thread_comm_msg_t msg, uint64_t timestamp_ms)
 {
     if (g_thread_comm_initialized == 0U ||
@@ -391,8 +413,10 @@ UINT thread_comm_admit_network(thread_comm_msg_t msg, uint64_t timestamp_ms)
         return TX_MUTEX_ERROR;
     UINT result;
     if (g_command_admission_fault) result = THREAD_COMM_COMMIT_UNCERTAIN;
-    else if (g_thread_comm_abort || g_recovery_pending || g_fill_configuration_pending || !network_timestamp_allowed_locked(timestamp_ms))
+    else if (g_thread_comm_abort || g_recovery_pending || g_fill_configuration_pending || !network_timestamp_allowed_locked(timestamp_ms)) {
         result = THREAD_COMM_STALE_TIMESTAMP;
+        board_refusal_note(msg.cmd, refusal_reason_locked(timestamp_ms, 0U));
+    }
     else result = thread_comm_send_owned_nowait(msg);
     return command_state_release()?result:THREAD_COMM_COMMIT_UNCERTAIN;
 }

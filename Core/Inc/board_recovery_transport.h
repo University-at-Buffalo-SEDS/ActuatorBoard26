@@ -16,6 +16,9 @@ SedsResult board_recovery_handle(SedsRouter *router,const SedsPacketView *packet
                                 uint32_t local_endpoint,uint32_t uptime_ms);
 /* Application replay floor; SDK stays generic. No current-time/RNG claim. */
 uint8_t board_recovery_command_is_stale(const SedsPacketView *packet);
+/* The board_refusal.h reason board_recovery_command_is_stale refuses for:
+ * BELOW_FLOOR or STALE; NONE when the stamp passes. */
+uint8_t board_recovery_command_stale_reason(const SedsPacketView *packet);
 uint8_t board_recovery_managed_update_allowed(const SedsPacketView *packet);
 /* Nonzero for a well-formed FLIGHT_STATE whose sender is not the station: a
  * state report, never a desired-state write. */

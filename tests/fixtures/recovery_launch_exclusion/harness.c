@@ -28,6 +28,7 @@ ULONG tx_time_get(void){return ticks;}
 #include "bootstrap_owner.h"
 #include "bootstrap_marker.h"
 #include "fill_settings.h"
+#include "board_refusal.h"
 #include "sedsnet_config.h"
 #define NVM_SIZE 4096U
 static bool fixture=true,thread_present,request_inflight,owner_stopped=true;
@@ -175,7 +176,10 @@ static void pending_settings(SedsRouter*r){
  SedsPacketView p={.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS,.sender="GS",.sender_len=2,.endpoints=&endpoint,.num_endpoints=1,.payload=body,.payload_len=32,.timestamp=10004};
  assert(fill_settings_handle(r,&p)==SEDS_OK&&response[1]==5U);
  body[1]=1;body[2]=2;bootstrap_write64(body+4,22);bootstrap_write64(body+12,board_recovery_boot_current());BoardRecoverySnapshot snap={0};(void)board_recovery_snapshot(&snap);bootstrap_write32(body+20,snap.abort_epoch);
- assert(fill_settings_handle(r,&p)==SEDS_OK&&response[1]==5U);fill_settings_service();
+ assert(fill_settings_handle(r,&p)==SEDS_OK&&response[1]==5U);
+ /* The refused change to AUX tells the station why (board_refusal.h). */
+ assert((board_refusal_current()&0xFFFFU)==(((BOARD_REFUSAL_DRIVE_SET|2U)<<8)|BOARD_REFUSAL_NOT_COMMISSIONED));
+ fill_settings_service();
  assert(response[1]==5U&&reads==read_calls&&writes==media_writes&&erases==media_erases&&mode_prepares==prepares&&thread_comm_get_abort()&&!persistent_store_controls_ready());
 }
 static uint8_t stop_owner(void){assert(main_owner&&state_mutex->locked);owner_stopped=true;return 1;}

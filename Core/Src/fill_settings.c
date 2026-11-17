@@ -8,6 +8,7 @@
 #include "board_recovery_floor.h"
 #include "board_recovery_transport.h"
 #include "board_stamp.h"
+#include "board_refusal.h"
 #include "launchcore/persist.h"
 #include "tx_api.h"
 #include <stdatomic.h>
@@ -98,14 +99,19 @@ static SedsResult emit(SedsRouter*r,const uint8_t request[32],uint8_t result){
  if(persistent_store_bootstrap_pending())response[1]=5U;
  return seds_router_log_queue_typed(r,SEDS_DT_AB_FILL_DRIVE_STATUS,response,40U,1U,SEDS_EK_UNSIGNED);
 }
+/* A refused drive change tells the station why (board_refusal.h). */
+static uint8_t store_reason(void){return persistent_store_bootstrap_pending()?BOARD_REFUSAL_NOT_COMMISSIONED:BOARD_REFUSAL_STORE_NOT_READY;}
+static SedsResult refuse(SedsRouter*r,const uint8_t request[32],uint8_t result,uint8_t reason){
+ board_refusal_note((uint8_t)(BOARD_REFUSAL_DRIVE_SET|request[2]),reason);return emit(r,request,result);
+}
 SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
  if(!r||!p||p->ty!=SEDS_DT_AB_FILL_DRIVE_SETTINGS||p->num_endpoints!=1U||!p->endpoints||p->endpoints[0]!=SEDS_EP_ACTUATOR_BOARD)return SEDS_BAD_ARG;
  if(!seds_router_sender_matches_hostname(r,p->sender,p->sender_len,"GS",2U))return SEDS_PERMISSION_DENIED;
  if(p->payload_len!=32U||!p->payload)return SEDS_BAD_ARG;
  const uint8_t*q=p->payload;
  if((q[0]!=1U&&q[0]!=FILL_MOTION_QUERY_VERSION)||q[1]>1U||(q[0]==FILL_MOTION_QUERY_VERSION&&q[1]!=0U)||q[2]>2U||q[3]!=0U||!decode64(q+4)||!decode64(q+24)||(q[1]==0U&&q[2]!=0U))return SEDS_BAD_ARG;
- if(persistent_store_bootstrap_pending())return emit(r,q,5U);
- if(q[1]==0U)return emit(r,q,0U); /* QUERY does not read/write journal or alter holding torque. */
+ if(q[1]==0U)return emit(r,q,persistent_store_bootstrap_pending()?5U:0U);
+ if(persistent_store_bootstrap_pending())return refuse(r,q,5U,BOARD_REFUSAL_NOT_COMMISSIONED); /* QUERY does not read/write journal or alter holding torque. */
  if(!cache_enter())return SEDS_IO;
  const uint64_t stamp=board_stamp_of(p);
  bool duplicate=cached.valid&&!memcmp(q+4,cached.bytes+4,8)&&!memcmp(q+24,cached.bytes+24,8);
@@ -113,20 +119,24 @@ SedsResult fill_settings_handle(SedsRouter*r,const SedsPacketView*p){
  if(duplicate)result=memcmp(q,cached.bytes,32)||stamp!=cached.source?7U:cached.result;
  else if(cached.pending)result=5U;
  bool released=cache_leave();if(!released)return SEDS_IO;
- if(duplicate||result)return emit(r,q,result);
- if(q[2]==FILL_MODE_BRIDGE)return emit(r,q,2U); /* Uncorrected schematic: never selectable live. */
+ if(duplicate)return emit(r,q,result);
+ if(result)return refuse(r,q,result,BOARD_REFUSAL_BUSY);
+ if(q[2]==FILL_MODE_BRIDGE)return refuse(r,q,2U,BOARD_REFUSAL_WRONG_DRIVE); /* Uncorrected schematic: never selectable live. */
  BoardRecoverySnapshot snapshot={0};
  if(!decode64(q+12)||decode64(q+12)==UINT64_MAX||!decode32(q+20)||decode32(q+20)==UINT32_MAX)return emit(r,q,3U);
- if(!fresh(r,stamp))return emit(r,q,4U);
- if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready()||board_recovery_snapshot(&snapshot)!=0)return emit(r,q,6U);
- if(decode64(q+12)!=board_recovery_boot_current()||decode32(q+20)!=snapshot.abort_epoch)return emit(r,q,4U);
+ if(!fresh(r,stamp))return refuse(r,q,4U,BOARD_REFUSAL_STALE);
+ if(!persistent_store_controls_ready())return refuse(r,q,6U,store_reason());
+ if(!selected_ready&&!reconcile_pending&&!absent_candidate)return refuse(r,q,6U,BOARD_REFUSAL_DRIVE_NOT_LOADED);
+ if(board_recovery_snapshot(&snapshot)!=0)return refuse(r,q,6U,BOARD_REFUSAL_OWNER_FAULT);
+ if(decode64(q+12)!=board_recovery_boot_current()||decode32(q+20)!=snapshot.abort_epoch)return refuse(r,q,4U,BOARD_REFUSAL_OLD_EPOCH);
  /* Configuration is quiescent in Startup or Idle; active/Abort states remain blocked. */
- if(snapshot.actual_state>1U||(snapshot.flags&BOARD_RECOVERY_ABORT_LATCHED)!=0U)return emit(r,q,5U);
+ if((snapshot.flags&BOARD_RECOVERY_ABORT_LATCHED)!=0U)return refuse(r,q,5U,BOARD_REFUSAL_ABORT);
+ if(snapshot.actual_state>1U)return refuse(r,q,5U,BOARD_REFUSAL_INTERLOCK);
  if(!cache_enter())return SEDS_IO;
  if(cached.pending){result=5U;}
  else {memcpy(cached.bytes,q,32);cached.source=stamp;cached.router=r;cached.result=1U;cached.valid=true;cached.pending=true;cached.dirty=false;result=1U;}
  if(!cache_leave())return SEDS_IO;
- return emit(r,q,result);
+ return result==5U?refuse(r,q,result,BOARD_REFUSAL_BUSY):emit(r,q,result);
 }
 static uint8_t prepare_mode(void*context){return main_task_fill_prepare_mode(*(uint8_t*)context);}
 typedef struct {uint8_t mode;uint64_t source;} Publish;
@@ -158,17 +168,21 @@ void fill_settings_service(void){
  if(!cache_leave())return;
  if(pending){
   bool initialize_absent=!selected_ready&&!reconcile_pending&&absent_candidate;
-  uint8_t mode=request[2],result=0U;uint32_t epoch=decode32(request+20);
-  if(persistent_store_bootstrap_pending())result=5U;
-  else if((!selected_ready&&!reconcile_pending&&!absent_candidate)||!persistent_store_controls_ready())result=6U;
-  else if(decode64(request+12)!=board_recovery_boot_current()||source<=(reconcile_pending?reconcile_source:selected_cutoff)||!fresh(router,source))result=4U;
-  else if(initialize_absent&&!board_recovery_command_time_allowed(source))result=4U;
-  else if(!thread_comm_fill_config_begin(epoch,prepare_mode,&mode))result=5U;
+  uint8_t mode=request[2],result=0U,reason=BOARD_REFUSAL_NONE;uint32_t epoch=decode32(request+20);
+  if(persistent_store_bootstrap_pending()){result=5U;reason=BOARD_REFUSAL_NOT_COMMISSIONED;}
+  else if(!persistent_store_controls_ready()){result=6U;reason=store_reason();}
+  else if(!selected_ready&&!reconcile_pending&&!absent_candidate){result=6U;reason=BOARD_REFUSAL_DRIVE_NOT_LOADED;}
+  else if(decode64(request+12)!=board_recovery_boot_current()){result=4U;reason=BOARD_REFUSAL_OLD_EPOCH;}
+  else if(source<=(reconcile_pending?reconcile_source:selected_cutoff)){result=4U;reason=BOARD_REFUSAL_BEFORE_DRIVE_CHANGE;}
+  else if(!fresh(router,source)){result=4U;reason=BOARD_REFUSAL_STALE;}
+  else if(initialize_absent&&!board_recovery_command_time_allowed(source)){result=4U;reason=BOARD_REFUSAL_BELOW_FLOOR;}
+  else if(!thread_comm_fill_config_begin(epoch,prepare_mode,&mode)){result=5U;reason=thread_comm_refusal_reason(source,epoch);if(!reason)reason=BOARD_REFUSAL_BUSY;}
   else {
    bool stored=store_record(mode,source,initialize_absent);Publish publish={mode,source};
    bool applied=thread_comm_fill_config_end(epoch,stored?publish_mode:0,&publish);
-   if(!stored)result=6U;else if(!applied){selected_ready=false;reconcile_mode=mode;reconcile_source=source;reconcile_pending=true;result=4U;}
+   if(!stored){result=6U;reason=BOARD_REFUSAL_STORE_NOT_READY;}else if(!applied){selected_ready=false;reconcile_mode=mode;reconcile_source=source;reconcile_pending=true;result=4U;reason=BOARD_REFUSAL_RECOVERY_PENDING;}
   }
+  board_refusal_note((uint8_t)(BOARD_REFUSAL_DRIVE_SET|request[2]),reason);
   if(!cache_enter())return;
   cached.result=result;cached.pending=false;cached.dirty=true;retry_waiting=false;
   if(!cache_leave())return;

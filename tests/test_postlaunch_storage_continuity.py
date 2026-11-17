@@ -60,6 +60,8 @@ typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestam
 static unsigned g_command_queue_drop_count;
 static int board_recovery_sync_command_cutoff(void){return SEDS_OK;}
 static bool board_recovery_command_is_stale(const SedsPacketView*p){(void)p;return false;}
+#include "board_refusal.h"
+static uint8_t board_recovery_command_stale_reason(const SedsPacketView*p){(void)p;return 0;}
 static int32_t seds_pkt_get_u8(const SedsPacketView*p,uint8_t*out,size_t count){assert(count==1U);*out=p->payload[0];return 1;}
 '''+replay+'\n'+function(telemetry,'Valve_Command_handler')+r'''
 int main(int argc,char**argv){

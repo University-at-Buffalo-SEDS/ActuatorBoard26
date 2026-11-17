@@ -122,6 +122,28 @@ int main(int argc,char**argv){
  stamp_fixture_hear_newer(2,1500U);const uint64_t newer=board_stamp_pack(2,network_now-UINT64_C(3600000));
  start_selected_plumbing_retract(newer,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==newer&&gpio_on==3);
  }
+ else if(!strcmp(argv[1],"refusal_aux")){
+ /* Each refused AUX QD start names why (board_refusal.h); a duplicate is no refusal. */
+ const uint32_t epoch=thread_comm_manual_epoch();
+ settings_ready=false;assert(start_selected_plumbing_retract(10000,epoch)==BOARD_REFUSAL_DRIVE_NOT_LOADED);settings_ready=true;
+ mode=FILL_MODE_BRIDGE;assert(start_selected_plumbing_retract(10000,epoch)==BOARD_REFUSAL_WRONG_DRIVE);
+ mode=FILL_MODE_AUX;assert(start_selected_plumbing_retract(9000,epoch)==BOARD_REFUSAL_BEFORE_DRIVE_CHANGE);
+ network_now=20000;assert(start_selected_plumbing_retract(14000,epoch)==BOARD_REFUSAL_STALE&&!g_fill_motion.active);
+ assert(start_selected_plumbing_retract(20000,epoch)==BOARD_REFUSAL_NONE&&g_fill_motion.active);
+ assert(start_selected_plumbing_retract(20000,epoch)==BOARD_REFUSAL_NONE);
+ network_now=20500;assert(start_selected_plumbing_retract(20500,epoch)==BOARD_REFUSAL_BUSY);
+ assert(thread_comm_request_manual_abort()==0);network_now=21000;
+ assert(start_selected_plumbing_retract(21000,epoch)==BOARD_REFUSAL_ABORT);
+ }
+ else if(!strcmp(argv[1],"refusal_stepper")){
+ const uint32_t epoch=thread_comm_manual_epoch();
+ g_fill_drive_fault=true;assert(start_selected_plumbing_retract(10000,epoch)==BOARD_REFUSAL_DRIVE_FAULT&&!wakes);g_fill_drive_fault=false;
+ assert(thread_comm_publish_command_cutoff(10000)==0);assert(start_selected_plumbing_retract(10000,epoch)==BOARD_REFUSAL_BELOW_FLOOR&&!wakes);
+ assert(start_selected_plumbing_retract(10001,epoch)==BOARD_REFUSAL_NONE&&pulses_started==1);
+ assert(start_selected_plumbing_retract(10002,epoch)==BOARD_REFUSAL_BUSY&&pulses_started==1);
+ driver_active=false;service_plumbing_retract();
+ assert(start_selected_plumbing_retract(10001,epoch)==BOARD_REFUSAL_NONE&&pulses_started==1); /* duplicate */
+ }
  else if(!strcmp(argv[1],"stale")){assert(thread_comm_publish_command_cutoff(10000)==0);start_selected_plumbing_retract(10000,thread_comm_manual_epoch());assert(!wakes&&!pulses_started);}
  else assert(0);
  assert(!ports[1].ODR&&!ports[2].ODR&&!ports[3].ODR&&!ports[4].ODR);return 0;
@@ -142,10 +164,10 @@ uint64_t board_recovery_boot_current(void){return 42;}
 bool seds_router_sender_matches_hostname(const SedsRouter*r,const char*s,size_t n,const char*owner,size_t on){(void)r;return n==on&&!memcmp(s,owner,n);}
 SedsResult seds_router_log_queue_typed(SedsRouter*r,SedsDataType ty,const void*data,size_t n,size_t size,SedsElemKind kind){(void)r;assert(!g_thread_comm_state_mutex.locked&&size==1&&kind==SEDS_EK_UNSIGNED&&(n==40||n==56));memcpy(reply,data,n);reported_count=n;reported_type=ty;reports++;return 0;}
 bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){FillMotionSnapshotV2 s;bool valid=main_task_fill_snapshot_v2(&s);*m=s.mode;*a=s.active_action;*b=s.busy;*remaining=s.remaining_ms;return valid;}
-'''+''.join(function(settings,name)+'\n' for name in ['decode64','encode64','fresh','decode32','encode32','emit_motion_v2','emit','fill_settings_handle'])
+'''+''.join(function(settings,name)+'\n' for name in ['decode64','encode64','fresh','decode32','encode32','emit_motion_v2','emit','store_reason','refuse','fill_settings_handle'])
   code=code.replace('QUERY_ACTUAL',query)
   owner=(ROOT/'Core/Src/main_task.c').read_text()
-  names=['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked','fill_monotonic_ms','fill_minimum_start_ms','next_fill_serial','prepare_legacy_start','wake_legacy_start','finish_legacy_start','start_plumbing_retract','start_aux_locked','start_selected_plumbing_retract','service_aux_locked','service_auxiliary_retract','service_legacy_locked','service_plumbing_retract','invalidate_motion_provenance_locked','fill_snapshot_v2_locked','main_task_fill_snapshot_v2']
+  names=['all_fill_outputs_off','fill_outputs_are_off','fill_stop_locked','fill_monotonic_ms','fill_minimum_start_ms','next_fill_serial','fill_gate_reason','prepare_legacy_start','wake_legacy_start','finish_legacy_start','fill_refusal','start_plumbing_retract','start_aux_locked','start_selected_plumbing_retract','service_aux_locked','service_auxiliary_retract','service_legacy_locked','service_plumbing_retract','invalidate_motion_provenance_locked','fill_snapshot_v2_locked','main_task_fill_snapshot_v2']
   start=owner.index('typedef struct {uint64_t source;');actual=owner[start:owner.index('\n',start)+1]+''.join(function(owner,name)+'\n' for name in names)
   ports=''.join(f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n' for i,name in enumerate(['BACKUP_VALVE_EN','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']))
   code=code.replace('ACTUAL',actual).replace('PORTS',ports)
@@ -154,6 +176,6 @@ bool main_task_fill_snapshot(uint8_t*m,uint8_t*a,uint8_t*b,uint32_t*remaining){F
   with tempfile.TemporaryDirectory(prefix='motion-actual-owner-')as d:
    p=Path(d);(p/'tx_api.h').write_text(tx);(p/'test.c').write_text(code);exe=p/'test'
    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-DTELEMETRY_ENABLED','-I'+str(Path(sdk['header']).parent),'-fsanitize=address,undefined','-I'+str(p),'-I'+str(ROOT/'Core/Inc'),'-I'+str(ROOT/'tests/fixtures'),str(p/'test.c'),str(ROOT/'Core/Src/fill_motion.c'),str(ROOT/'Core/Src/fill_motion_status.c'),'-o',str(exe)],check=True)
-   for case in ['stop_wake','newer_wake','stop_recover_newer','legacy_minimum','legacy_early_complete','aux_minimum','stop_before_service','timer_failure','owner_busy','stale','query_wire','aux_after_step']:
+   for case in ['stop_wake','newer_wake','stop_recover_newer','legacy_minimum','legacy_early_complete','aux_minimum','stop_before_service','timer_failure','owner_busy','stale','query_wire','aux_after_step','refusal_aux','refusal_stepper']:
     with self.subTest(case=case):subprocess.run([str(exe),case],check=True)
 if __name__=='__main__':unittest.main()

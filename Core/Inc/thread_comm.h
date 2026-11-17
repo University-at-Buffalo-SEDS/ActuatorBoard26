@@ -115,6 +115,9 @@ UINT thread_comm_apply_network_flight_state(uint8_t state,uint64_t timestamp_ms)
 UINT thread_comm_admit_network_automatic(thread_comm_msg_t msg, uint64_t timestamp_ms);
 UINT thread_comm_admit_network_launch(thread_comm_msg_t msg);
 uint8_t thread_comm_command_timestamp_current(uint64_t timestamp_ms);
+/* Why ordinary admission refuses this stamp/owner epoch now (board_refusal.h
+ * reason, 0 if it would pass; epoch 0 skips the epoch check). Diagnostics. */
+uint8_t thread_comm_refusal_reason(uint64_t timestamp_ms, uint32_t epoch);
 
 /**
  * @brief Pop one message from the shared queue.

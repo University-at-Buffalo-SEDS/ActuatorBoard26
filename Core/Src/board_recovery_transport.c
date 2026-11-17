@@ -10,6 +10,7 @@
 #include "bootstrap_owner.h"
 #include "bootstrap_marker.h"
 #include "board_stamp.h"
+#include "board_refusal.h"
 #include <stdatomic.h>
 #include <string.h>
 static SedsRouter *recovery_router;
@@ -51,6 +52,15 @@ uint8_t board_recovery_stamp_age(SedsRouter*router,uint64_t stamp,int64_t*age_ms
  if(!router||!age_ms||!stamp||stamp==UINT64_MAX||
     seds_router_network_stamp_age_ms(router,board_stamp_epoch(stamp),board_stamp_ms(stamp),&kind,&age)!=SEDS_OK||kind!=0U)return 0U;
  *age_ms=age;return 1U;
+}
+/* Same checks as board_recovery_command_is_stale, naming the one that refused. */
+uint8_t board_recovery_command_stale_reason(const SedsPacketView *packet)
+{
+ if (packet==0) return BOARD_REFUSAL_STALE;
+ const uint64_t stamp=board_stamp_of(packet);
+ if (!board_recovery_command_time_allowed(stamp)) return BOARD_REFUSAL_BELOW_FLOOR;
+ if (board_recovery_floor_active() && !board_recovery_request_fresh(recovery_router,stamp)) return BOARD_REFUSAL_STALE;
+ return BOARD_REFUSAL_NONE;
 }
 uint8_t board_recovery_command_is_stale(const SedsPacketView *packet)
 {

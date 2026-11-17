@@ -22,6 +22,7 @@
 #include "persistent_store_health.h"
 #include "ground_heartbeat_owner.h"
 #include "board_commands.h"
+#include "board_refusal.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,7 @@ uint8_t thread_comm_request_automatic_abort(uint8_t o){(void)o;abort_requests++;
 UINT thread_comm_request_manual_abort(void){abort_requests++;return 1U;}
 UINT thread_comm_request_manual_abort_original_utc(uint64_t t){(void)t;abort_requests++;return 1U;}
 bool thread_comm_fill_config_begin(uint32_t e,uint8_t(*p)(void*),void*c){(void)e;(void)p;(void)c;return false;}
+uint8_t thread_comm_refusal_reason(uint64_t t,uint32_t e){(void)t;(void)e;return 0;}
 bool thread_comm_fill_config_end(uint32_t e,void(*p)(void*),void*c){(void)e;(void)p;(void)c;return false;}
 int32_t board_recovery_snapshot(BoardRecoverySnapshot*o){memset(o,0,sizeof*o);o->abort_epoch=1U;o->flags=BOARD_RECOVERY_SUPPORTED;return 0;}
 uint64_t board_recovery_boot_current(void){return 7U;}

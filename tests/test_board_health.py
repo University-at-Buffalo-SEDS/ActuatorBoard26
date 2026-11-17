@@ -12,6 +12,7 @@ class BoardHealthTests(unittest.TestCase):
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include "board_refusal.h"
 typedef int SedsRouter;
 typedef int SedsResult;
 #define SEDS_OK 0
@@ -56,6 +57,8 @@ int main(void){
  uptime=10000;refuse=0;board_health_poll(&router);
  assert((captured[1]&0xffffff00U)==0x17bd0100U);
  assert(calls==2&&captured[23]==1&&captured[0]==1&&captured[4]==1000);
+ /* Refusal block: tagged, empty until the board refuses a command. */
+ assert(captured[16]==BOARD_REFUSAL_TAG&&captured[17]==0&&captured[18]==0);
  assert(captured[5]==123&&captured[6]==5&&captured[11]==34&&captured[12]==31);
 #ifdef TELEMETRY_USE_TLSF
  assert((captured[1]&1)&&captured[7]==100&&captured[8]==200&&captured[9]==4096&&captured[10]==7);
@@ -63,11 +66,22 @@ int main(void){
  assert(!(captured[1]&1)&&!captured[7]&&!captured[8]&&!captured[9]&&!captured[10]);
 #endif
  if(captured[1]&16)assert(captured[16]==0xf00d1234U); /* no float rounding */
- uptime=(UINT64_C(1)<<42)+20000;board_health_poll(&router);
- assert(calls==3&&captured[2]==20000&&captured[3]==1024);
- uptime=(UINT64_C(1)<<42)+UINT32_MAX-2U;board_health_poll(&router);assert(calls==4);
- uptime+=4999;board_health_poll(&router);assert(calls==4);
- ++uptime;board_health_poll(&router);assert(calls==5); /* 32-bit schedule wrap */
+ /* A refusal goes out early (>=200 ms after the last report), once. */
+ uptime=10100;board_refusal_note(8U,BOARD_REFUSAL_WRONG_DRIVE);board_health_poll(&router);assert(calls==2);
+ uptime=10200;board_health_poll(&router);
+ assert(calls==3&&captured[16]==BOARD_REFUSAL_TAG&&captured[17]==((1U<<16)|(8U<<8)|BOARD_REFUSAL_WRONG_DRIVE)&&captured[18]==0);
+ uptime=10500;board_health_poll(&router);assert(calls==3); /* no repeat until the 5 s period */
+ board_refusal_note(0x80U|9U,BOARD_REFUSAL_STALE);board_refusal_note(9U,BOARD_REFUSAL_NONE);
+ uptime=10600;board_health_poll(&router);assert(calls==3); /* automatic and NONE are not refusals */
+ uptime=15200;board_health_poll(&router);assert(calls==4&&captured[17]>>16==1U&&captured[18]==5000);
+ board_refusal_note(BOARD_REFUSAL_DRIVE_SET|2U,BOARD_REFUSAL_INTERLOCK);
+ uptime=15450;board_health_poll(&router);
+ assert(calls==5&&captured[17]==((2U<<16)|((BOARD_REFUSAL_DRIVE_SET|2U)<<8)|BOARD_REFUSAL_INTERLOCK)&&captured[18]==0);
+ uptime=(UINT64_C(1)<<42)+21000;board_health_poll(&router);
+ assert(calls==6&&captured[2]==21000&&captured[3]==1024&&captured[18]==5550);
+ uptime=(UINT64_C(1)<<42)+UINT32_MAX-2U;board_health_poll(&router);assert(calls==7);
+ uptime+=4999;board_health_poll(&router);assert(calls==7);
+ ++uptime;board_health_poll(&router);assert(calls==8); /* 32-bit schedule wrap */
 #else
  uptime=999999;board_health_poll(&router);assert(!calls);
 #endif
@@ -77,8 +91,29 @@ int main(void){
   with tempfile.TemporaryDirectory() as tmp:
    for label,flags in [('tlsf',['-DTELEMETRY_ENABLED','-DTELEMETRY_USE_TLSF']),('threadx',['-DTELEMETRY_ENABLED']),('disabled',[])]:
     binary=Path(tmp)/label
-    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror',*flags,'-x','c','-','-o',str(binary)],input=harness,text=True,check=True)
+    subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Core/Inc'),*flags,'-x','c','-','-o',str(binary)],input=harness,text=True,check=True)
     subprocess.run([str(binary)],check=True)
+ def test_refusal_record_counts_and_skips_automatic_commands(self):
+  harness=r'''
+#include <assert.h>
+#include "board_refusal.h"
+int main(void){
+ assert(board_refusal_current()==0U);
+ board_refusal_note(8U,BOARD_REFUSAL_NONE);board_refusal_note(0x88U,BOARD_REFUSAL_BUSY);
+ assert(board_refusal_current()==0U);
+ board_refusal_note(BOARD_REFUSAL_DRIVE_SET|2U,BOARD_REFUSAL_INTERLOCK);
+ assert(board_refusal_current()==((1U<<16)|(0x42U<<8)|BOARD_REFUSAL_INTERLOCK));
+ for(unsigned i=1;i<0xFFFFU;i++)board_refusal_note(8U,BOARD_REFUSAL_STALE);
+ assert(board_refusal_current()>>16==0xFFFFU);
+ board_refusal_note(10U,BOARD_REFUSAL_ABORT); /* 0 stays "none since boot" */
+ assert(board_refusal_current()==((1U<<16)|(10U<<8)|BOARD_REFUSAL_ABORT));
+ return 0;
+}
+'''
+  with tempfile.TemporaryDirectory() as tmp:
+   binary=Path(tmp)/'refusal'
+   subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Core/Inc'),'-x','c','-','-o',str(binary)],input=harness,text=True,check=True)
+   subprocess.run([str(binary)],check=True)
  def test_schema_and_header_use_matching_canonical_u32_identity(self):
   definitions=json.loads((ROOT/'config/sedsnet.json').read_text())
   report=next(t for t in definitions['types'] if t['name']=='BOARD_HEALTH')

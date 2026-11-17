@@ -88,7 +88,7 @@ UINT tx_mutex_put(TX_MUTEX*m){assert(m->locked);m->locked=0;
         names = [
             "all_fill_outputs_off", "fill_outputs_are_off", "fill_stop_locked",
             "fill_monotonic_ms", "fill_minimum_start_ms", "next_fill_serial",
-            "prepare_legacy_start", "wake_legacy_start", "finish_legacy_start", "start_plumbing_retract",
+            "fill_gate_reason", "prepare_legacy_start", "wake_legacy_start", "finish_legacy_start", "fill_refusal", "start_plumbing_retract",
             "start_aux_locked", "start_selected_plumbing_retract", "service_aux_locked",
             "service_auxiliary_retract", "service_legacy_locked", "service_plumbing_retract",
             "invalidate_motion_provenance_locked", "fill_snapshot_v2_locked",

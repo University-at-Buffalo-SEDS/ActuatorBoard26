@@ -40,6 +40,7 @@ extern int telemetry_router_leave(void);
 #include "fill_settings.h"
 #include "board_recovery_floor.h"
 #include "board_stamp.h"
+#include "board_refusal.h"
 
 #ifndef TELEMETRY_ENABLED
 static void print_data_no_telem(void *data, size_t len)
@@ -251,12 +252,17 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   /* Publish storage-validated cutoff before state-lock admission; no NVM
    * getter runs under that lock. Refusal/IO is not a stale-command receipt. */
   if (pkt != NULL && board_recovery_sync_command_cutoff()!=SEDS_OK) return SEDS_IO;
-  if (pkt != NULL && board_recovery_command_is_stale(pkt)) return SEDS_OK;
+  /* An operator command refused for good tells the station why (board_refusal.h). */
+  if (pkt != NULL && board_recovery_command_is_stale(pkt)) {
+    BOARD_REFUSAL_NOTE_PACKET(pkt, board_recovery_command_stale_reason(pkt));
+    return SEDS_OK;
+  }
 
   (void)user;
 
   if (thread_comm_get_abort() != 0U)
   {
+    BOARD_REFUSAL_NOTE_PACKET(pkt, BOARD_REFUSAL_ABORT);
     return SEDS_OK;
   }
 
