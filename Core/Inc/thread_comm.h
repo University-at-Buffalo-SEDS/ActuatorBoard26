@@ -27,8 +27,15 @@ uint8_t thread_comm_launch_original_accepted(uint64_t source,const char*sender,u
 uint8_t thread_comm_launch_claim(uint64_t source,uint32_t epoch,thread_comm_launch_owner_t*out);
 uint8_t thread_comm_launch_begin_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context);
 /* Original network UTC is mapped once, before acceptance, to a bounded
- * monotonic effect deadline. No UTC lookup or retiming after acceptance. */
-#define THREAD_COMM_LAUNCH_EFFECT_DELAY_MS 4250U
+ * monotonic effect deadline. No UTC lookup or retiming after acceptance.
+ * The igniter starts exactly 5 s after the Launch stamp (T-5 s for the 10 s
+ * countdown). A stamp up to MAX_AGE old or MAX_FUTURE ahead is admitted;
+ * MAX_AGE never exceeds the delay, so an admitted Launch never maps to a
+ * deadline already in the past (a stamp exactly MAX_AGE old fires at once). */
+#define THREAD_COMM_LAUNCH_EFFECT_DELAY_MS 5000U
+#define THREAD_COMM_LAUNCH_MAX_AGE_MS 5000U
+#define THREAD_COMM_LAUNCH_MAX_FUTURE_MS 1000U
+_Static_assert(THREAD_COMM_LAUNCH_MAX_AGE_MS <= THREAD_COMM_LAUNCH_EFFECT_DELAY_MS,"Admitted Launch would start late");
 uint8_t thread_comm_launch_begin_owned_deadline(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context,uint32_t*deadline);
 
 uint8_t thread_comm_launch_effect_owned(const thread_comm_launch_owner_t*owner,void(*apply)(void*),void*context);

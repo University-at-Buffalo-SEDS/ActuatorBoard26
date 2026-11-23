@@ -32,6 +32,7 @@ int main(int argc,char**argv){
  else if(!strcmp(which,"zero-utc")){utc=0;invalid=true;}
  else if(!strcmp(which,"max-utc")){utc=UINT64_MAX;invalid=true;}
  else if(!strcmp(which,"aged-pair-valid"))fake_tick+=1000U;
+ else if(!strcmp(which,"aged-pair-boundary")){utc+=4000U;fake_tick+=1000U;}
  else if(!strcmp(which,"aged-pair-stale")){utc+=5000U;fake_tick+=1U;invalid=true;}
  else if(!strcmp(which,"halfwrap")){fake_tick+=UINT32_C(0x80000000);invalid=true;}
  else if(!strcmp(which,"utc-overflow")){source=UINT64_MAX-1U;utc=UINT64_MAX-1U;fake_tick+=2U;invalid=true;}
@@ -45,8 +46,15 @@ int main(int argc,char**argv){
  }
  uint32_t expected=(!strcmp(which,"tick-wrap")?pair:100U)+(uint32_t)THREAD_COMM_LAUNCH_EFFECT_DELAY_MS;
  if(!strcmp(which,"future-boundary"))expected+=1000U;
+ if(!strcmp(which,"aged-pair-boundary"))expected-=4000U;
+ /* The igniter starts exactly 5 s after the Launch stamp (T-5 s). */
+ assert(THREAD_COMM_LAUNCH_EFFECT_DELAY_MS==5000U);
  assert(offer(source,utc,pair,clock_now)==TX_SUCCESS);assert(clock_calls==1U);
  assert(g_accepted_launch.deadline_valid&&g_accepted_launch.deadline==expected);
+ /* Even at the oldest admitted age the deadline is never already past:
+  * a stamp exactly 5 s old starts the igniter at acceptance, never late. */
+ assert((int32_t)(g_accepted_launch.deadline-fake_tick)>=0);
+ if(!strcmp(which,"delay-5000")||!strcmp(which,"aged-pair-boundary"))assert(g_accepted_launch.deadline==fake_tick);
  /* A delayed/clockless duplicate owns no new instant, tick or identity. */
  uint32_t calls=clock_calls;fake_tick+=30000U;
  assert(offer(source,0U,0U,0)==TX_SUCCESS&&clock_calls==calls);
@@ -75,5 +83,5 @@ TAKE
   code='#include <stdlib.h>\n'+code
   code=code.replace('OFFER','return '+('thread_comm_admit_network_launch_original_at((thread_comm_msg_t){.cmd=CMD_IGNITER_SEQUENCE,.timestamp_ms=source},"GS",2U,utc,tick,clock);'if ab else'thread_comm_request_network_launch_original_at(source,"GS",2U,utc,tick,clock);'))
   code=code.replace('TAKE','thread_comm_msg_t queued;uint32_t epoch;assert(thread_comm_receive_owned(&queued,&epoch)==TX_SUCCESS);assert(thread_comm_launch_claim(queued.timestamp_ms,epoch,&owner));'if ab else'assert(thread_comm_take_accepted_launch(&owner));')
-  for case in ['delay-0','delay-1000','delay-4000','delay-4250','delay-4500','delay-5000','future-boundary','future-refuse','stale-refuse','zero-source','zero-utc','max-utc','aged-pair-valid','aged-pair-stale','halfwrap','utc-overflow','tick-wrap','no-clock','stop-before-begin']:
+  for case in ['delay-0','delay-1000','delay-4000','delay-4250','delay-4500','delay-4999','delay-5000','future-boundary','future-refuse','stale-refuse','zero-source','zero-utc','max-utc','aged-pair-valid','aged-pair-boundary','aged-pair-stale','halfwrap','utc-overflow','tick-wrap','no-clock','stop-before-begin']:
    with self.subTest(case=case):compile_case(code,case,inline_state=True)

@@ -819,8 +819,8 @@ static uint8_t launch_deadline_locked(uint64_t stamp,uint64_t observed_utc,
  if(elapsed_ms>6000U||observed_utc>UINT64_MAX-elapsed_ms)return 0U;
  const uint64_t utc=observed_utc+elapsed_ms;
  int64_t remaining=THREAD_COMM_LAUNCH_EFFECT_DELAY_MS;
- if(utc>=source){uint64_t age=utc-source;if(age>5000U)return 0U;remaining-=(int64_t)age;}
- else{uint64_t future=source-utc;if(future>1000U)return 0U;remaining+=(int64_t)future;}
+ if(utc>=source){uint64_t age=utc-source;if(age>THREAD_COMM_LAUNCH_MAX_AGE_MS)return 0U;remaining-=(int64_t)age;}
+ else{uint64_t future=source-utc;if(future>THREAD_COMM_LAUNCH_MAX_FUTURE_MS)return 0U;remaining+=(int64_t)future;}
  /* Round a future deadline upward; a past deadline rounds toward now.
   * Both remain within the signed 32-bit monotonic comparison horizon. */
  const uint64_t magnitude=(uint64_t)(remaining<0?-remaining:remaining);

@@ -100,7 +100,6 @@ static thread_comm_launch_owner_t g_launch_owner;
 static ULONG g_launch_sequence_igniter_start_ticks,g_launch_sequence_igniter_stop_ticks,g_launch_sequence_holdoff_start_ticks;
 #define TX_TIMER_TICKS_PER_SECOND 1000U
 #define LAUNCH_SEQUENCE_IGNITER_START_DELAY_MS 5000U
-#define LAUNCH_SEQUENCE_IGNITER_LATENCY_COMPENSATION_MS 750U
 #define LAUNCH_SEQUENCE_IGNITER_ON_DURATION_MS 10000U
 #define LAUNCH_SEQUENCE_RESTART_HOLDOFF_MS 1500U
 #define LAUNCH_SEQUENCE_TIMESTAMP_MAX_AGE_MS 5000U
