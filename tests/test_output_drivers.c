@@ -16,25 +16,22 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin)
 int main(void)
 {
     GPIO_TypeDef enable = {0};
-    GPIO_TypeDef signal = {0};
     GPIO_TypeDef fault = {0};
     const uint16_t en_pin = 1U << 1;
-    const uint16_t sig_pin = 1U << 2;
     const uint16_t fault_pin = 1U << 3;
 
     solenoid_t solenoid = {
         .en_port = &enable, .en_pin = en_pin,
-        .sig_port = &signal, .sig_pin = sig_pin,
         .fault_port = &fault, .fault_pin = fault_pin,
     };
     solenoidInit(&solenoid);
-    assert((enable.output & en_pin) == 0U && (signal.output & sig_pin) == 0U);
+    assert((enable.output & en_pin) == 0U);
     assert(solenoidOn(&solenoid) == -1);
     fault.input |= fault_pin;
     assert(solenoidOn(&solenoid) == 0);
-    assert((enable.output & en_pin) != 0U && (signal.output & sig_pin) != 0U);
+    assert(enable.output == en_pin); /* only the drive pin */
     solenoidOff(&solenoid);
-    assert((enable.output & en_pin) == 0U && (signal.output & sig_pin) == 0U);
+    assert((enable.output & en_pin) == 0U);
 
     igniter_t igniter = {
         .en_port = &enable, .en_pin = en_pin,

@@ -106,6 +106,9 @@ static void telemetry_report_safety_abort(void)
     case SAFETY_ABORT_CONTINUITY: reason = "continuity lost"; break;
     case SAFETY_ABORT_LAUNCH_CONTINUITY: reason = "launch continuity timeout"; break;
     case SAFETY_ABORT_ADC_START: reason = "ADC start failed"; break;
+#if defined(AB_HALL_MISMATCH_ABORT) && AB_HALL_MISMATCH_ABORT
+    case SAFETY_ABORT_CURRENT_MISMATCH: reason = "current mismatch"; break;
+#endif
     default: reason = "local"; break;
     }
     static const char prefix[] = "SEDS_AUTO_ABORT_V1:";

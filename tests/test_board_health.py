@@ -35,6 +35,8 @@ uint32_t __get_PRIMASK(void){return mask;}
 void __disable_irq(void){mask=1;}
 void __set_PRIMASK(uint32_t value){mask=value;}
 uint32_t board_health_can_rx_drops(void){return 31;}
+#include "current_sense_trust.h"
+uint32_t safety_current_sense_status(void){return current_sense_status_word(5U);}
 uint32_t board_health_uart_rx_drops(void){return 32;}
 uint32_t board_health_adc_overruns(void){return 33;}
 size_t seds_memory_admission_rejected(void){return 34;}
@@ -60,6 +62,8 @@ int main(void){
  /* Refusal block: tagged, empty until the board refuses a command. */
  assert(captured[16]==BOARD_REFUSAL_TAG&&captured[17]==0&&captured[18]==0);
  assert(captured[5]==123&&captured[6]==5&&captured[11]==34&&captured[12]==31);
+ /* Hall current sense reported untrusted, abort not compiled in (default). */
+ assert(captured[19]==0x314E5343U&&captured[20]==(0xFU|(5U<<16)));
 #ifdef TELEMETRY_USE_TLSF
  assert((captured[1]&1)&&captured[7]==100&&captured[8]==200&&captured[9]==4096&&captured[10]==7);
 #else

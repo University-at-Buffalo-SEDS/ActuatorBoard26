@@ -82,9 +82,7 @@ void HAL_GPIO_WritePin(GPIO_TypeDef*,uint16_t,int);int HAL_GPIO_ReadPin(GPIO_Typ
 HAL_StatusTypeDef HAL_TIMEx_PWMN_Stop(TIM_HandleTypeDef*,uint32_t);void HAL_Delay(uint32_t);
 #define IGNITER_PIN_GPIO_Port (&io)
 #define NITROGEN_PIN_GPIO_Port (&io)
-#define N2_SIG_GPIO_Port (&io)
 #define NITROUS_PIN_GPIO_Port (&io)
-#define N20_SIG_GPIO_Port (&io)
 #define BACKUP_VALVE_EN_GPIO_Port (&io)
 #define N_FWD_EN_GPIO_Port (&io)
 #define N_BCKWD_EN_GPIO_Port (&io)
@@ -93,9 +91,7 @@ HAL_StatusTypeDef HAL_TIMEx_PWMN_Stop(TIM_HandleTypeDef*,uint32_t);void HAL_Dela
 #define Solenoid_GPIO_Port (&io)
 #define IGNITER_PIN_Pin 1U
 #define NITROGEN_PIN_Pin 2U
-#define N2_SIG_Pin 4U
 #define NITROUS_PIN_Pin 8U
-#define N20_SIG_Pin 16U
 #define BACKUP_VALVE_EN_Pin 32U
 #define N_FWD_EN_Pin 64U
 #define N_BCKWD_EN_Pin 128U
@@ -375,7 +371,8 @@ static volatile stepper_t*timer_stepper;
 static volatile bool timer_move_active;
 static volatile uint32_t timer_steps_remaining,timer_period_us;
 '''+function(driver,'stepperTimerPeriodElapsedCallback')+'''
-static void setup_outputs(void){io.ODR=4095;timer1.CR1=TIM_CR1_CEN;timer1.DIER=TIM_DIER_UIE;timer1.CCER=TIM_CCER_CC3NE;timer1.BDTR=TIM_BDTR_MOE;timer_stepper=&stepper;timer_move_active=true;timer_steps_remaining=1;timer_period_us=30;}
+/* Bits 4 and 16 were the N2_SIG/N20_SIG inputs: no output there. */
+static void setup_outputs(void){io.ODR=4095U&~20U;timer1.CR1=TIM_CR1_CEN;timer1.DIER=TIM_DIER_UIE;timer1.CCER=TIM_CCER_CC3NE;timer1.BDTR=TIM_BDTR_MOE;timer_stepper=&stepper;timer_move_active=true;timer_steps_remaining=1;timer_period_us=30;}
 static uint32_t output_mask(void){return (io.ODR&4095)|timer1.CR1|timer1.DIER|timer1.CCER|timer1.BDTR;}
 #define STOP_MASK 0U
 '''
@@ -393,8 +390,8 @@ static FillMotion g_fill_motion;static FillMotionProvenance g_fill_provenance;st
 #include "igniter_driver.h"
 #define MANUAL_OPEN_COMMAND CMD_NITROGEN_OPEN
 GPIO_TypeDef fault_io={.ODR=UINT32_MAX};
-solenoid_t n2_solenoid={.en_port=&io,.en_pin=2,.sig_port=&io,.sig_pin=4,.fault_port=&fault_io,.fault_pin=1};
-solenoid_t n20_solenoid={.en_port=&io,.en_pin=8,.sig_port=&io,.sig_pin=16,.fault_port=&fault_io,.fault_pin=1};
+solenoid_t n2_solenoid={.en_port=&io,.en_pin=2,.fault_port=&fault_io,.fault_pin=1};
+solenoid_t n20_solenoid={.en_port=&io,.en_pin=8,.fault_port=&fault_io,.fault_pin=1};
 igniter_t igniter={.en_port=&io,.en_pin=1,.fault_port=&fault_io,.fault_pin=1};
 static ULONG g_launch_sequence_igniter_start_ticks,g_launch_sequence_igniter_stop_ticks,g_launch_sequence_holdoff_start_ticks;
 '''

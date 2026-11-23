@@ -35,6 +35,12 @@ option(SEDS_FIRMWARE_SIM_TEST "Enable simulator-only network observability" OFF)
 if(SEDS_FIRMWARE_SIM_TEST)
     add_compile_definitions(SEDS_FIRMWARE_SIM_TEST=1)
 endif()
+# Hall current-sense mismatch abort (Core/Inc/current_sense_trust.h). OFF: the
+# fitted Hall chains saturate (docs/hall-current-sense-audit.md).
+option(AB_HALL_MISMATCH_ABORT "Abort on commanded-vs-Hall current mismatch" OFF)
+if(AB_HALL_MISMATCH_ABORT)
+    add_compile_definitions(AB_HALL_MISMATCH_ABORT=1)
+endif()
 # Simulator-only FLIGHT_STATE admission probe (never in release images).
 option(FLIGHT_STATE_PROBE "Simulator-only FLIGHT_STATE admission probe" OFF)
 if(FLIGHT_STATE_PROBE)

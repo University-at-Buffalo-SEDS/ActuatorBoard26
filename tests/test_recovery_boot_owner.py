@@ -42,7 +42,7 @@ static unsigned servo_relative_degrees_to_us(unsigned degrees,unsigned zero){(vo
    prefix+='#include <stdbool.h>\nstatic struct {bool active;} g_fill_motion;\n'
    for i,name in enumerate(['IGNITER_PIN','NITROGEN_PIN','NITROUS_PIN','BACKUP_VALVE_EN','STEPPER_SLEEP','N2_SIG','N20_SIG','N_FWD_EN','N_BCKWD_EN','P_FWD_EN','P_BCKWD_EN']):
     prefix+=f'#define {name}_GPIO_Port (&ports[{i}])\n#define {name}_Pin 1U\n'
-  extra='' if vb else 'for(unsigned i=7;i<11;i++){ports[0].ODR=0;ports[i].ODR=1;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));ports[i].ODR=0;}g_fill_motion.active=true;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));'
+  extra='' if vb else 'ports[0].ODR=0;ports[5].ODR=ports[6].ODR=1;flags=recovery_read_outputs(&outputs);assert(flags&BOARD_RECOVERY_SAFE_OUTPUTS);ports[5].ODR=ports[6].ODR=0;for(unsigned i=7;i<11;i++){ports[0].ODR=0;ports[i].ODR=1;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));ports[i].ODR=0;}g_fill_motion.active=true;flags=recovery_read_outputs(&outputs);assert(!(flags&BOARD_RECOVERY_SAFE_OUTPUTS));'
   main=r'''
 int main(void){
  uint32_t outputs=0;

@@ -8,7 +8,9 @@ enum {
     SAFETY_ABORT_INITIAL_HEARTBEAT = 2,
     SAFETY_ABORT_CONTINUITY = 3,
     SAFETY_ABORT_LAUNCH_CONTINUITY = 4,
-    SAFETY_ABORT_ADC_START = 5
+    SAFETY_ABORT_ADC_START = 5,
+    /* Only with AB_HALL_MISMATCH_ABORT (current_sense_trust.h), default off. */
+    SAFETY_ABORT_CURRENT_MISMATCH = 6
 };
 
 /* Local monotonic milliseconds, not network time. First local safety trigger

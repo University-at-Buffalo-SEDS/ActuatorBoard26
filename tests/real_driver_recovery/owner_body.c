@@ -27,8 +27,6 @@ static stepper_t stepper={.step_port=&ports[5],.step_pin=1,.dir_port=&ports[6],.
 #define IGNITER_PIN_GPIO_Port (&ports[9])
 #define NITROGEN_PIN_GPIO_Port (&ports[10])
 #define NITROUS_PIN_GPIO_Port (&ports[11])
-#define N2_SIG_GPIO_Port (&ports[12])
-#define N20_SIG_GPIO_Port (&ports[13])
 #define BACKUP_VALVE_EN_Pin 1U
 #define N_FWD_EN_Pin 1U
 #define N_BCKWD_EN_Pin 1U
@@ -38,8 +36,6 @@ static stepper_t stepper={.step_port=&ports[5],.step_pin=1,.dir_port=&ports[6],.
 #define IGNITER_PIN_Pin 1U
 #define NITROGEN_PIN_Pin 1U
 #define NITROUS_PIN_Pin 1U
-#define N2_SIG_Pin 1U
-#define N20_SIG_Pin 1U
 #define CMD_RETRACT_PLUMBING 8
 #define PLUMBING_RETRACT_STEPS 20000000U
 #define PLUMBING_RETRACT_STEP_PERIOD_US 30U
@@ -73,13 +69,13 @@ static bool finish_checked_called;
 static void finish_checked(void){
  uint32_t mask=UINT32_MAX;uint8_t flags=recovery_read_outputs(&mask);
  assert((flags&(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS))==(BOARD_RECOVERY_OUTPUTS_VALID|BOARD_RECOVERY_SAFE_OUTPUTS)&&mask==0U);
- assert(!(ports[9].ODR&1)&&!(ports[10].ODR&1)&&!(ports[11].ODR&1)&&!(ports[12].ODR&1)&&!(ports[13].ODR&1)&&!(ports[8].ODR&1));
+ assert(!(ports[9].ODR&1)&&!(ports[10].ODR&1)&&!(ports[11].ODR&1)&&!(ports[8].ODR&1));
  /* The owner state is still Launch: it moves only after this returns. */
  assert(g_thread_comm_flight_state==ACTUATOR_FLIGHT_STATE_LAUNCH&&!abort_latch);
  finish_checked_called=true;recovery_finish_owner();
 }
 static void launch_apply(void*context){(void)context;g_launch_sequence_active=1U;g_launch_sequence_igniter_started=1U;g_igniter_on=1U;g_nitrogen_open=1U;
- ports[9].ODR|=1;ports[10].ODR|=1;ports[12].ODR|=1;ports[8].ODR|=1;stepper.is_sleeping=false;}
+ ports[9].ODR|=1;ports[10].ODR|=1;ports[8].ODR|=1;stepper.is_sleeping=false;}
 /* A live (not aborted) launch owner, igniter and supplies energized, stepper awake. */
 static void live_launch(void){
  thread_comm_msg_t m={0};m.cmd=CMD_IGNITER_SEQUENCE;m.timestamp_ms=10000;assert(thread_comm_admit_launch(m)==TX_SUCCESS);

@@ -8,6 +8,7 @@
 #include "thread_comm.h"
 #include "tx_api.h"
 #include "safety_diagnostics.h"
+#include "current_sense_trust.h"
 
 
 
@@ -368,10 +369,22 @@ static void safety_process_adc_sample(const safety_adc_sample_t *sample)
 
     safety_adc_mismatch_count++;
     safety_adc_latched_mismatch_mask |= mismatch_mask;
+    /* Diagnostic only by default: the Hall chains are not trusted (see
+     * current_sense_trust.h, docs/hall-current-sense-audit.md), and the
+     * mismatch count is reported in BOARD_HEALTH, never acted on. */
+#if AB_HALL_MISMATCH_ABORT
     if (safety_adc_mismatch_count >= SAFETY_ADC_MISMATCH_LIMIT)
     {
-        // (void)thread_comm_set_abort(1U);
+        (void)thread_comm_request_local_abort(SAFETY_ABORT_CURRENT_MISMATCH, safety_now_ms(),
+            thread_comm_get_groundstation_heartbeat_ms(), thread_comm_get_flight_state(),
+            mismatch_mask, telemetry_event_clock_snapshot(), 0U);
     }
+#endif
+}
+
+uint32_t safety_current_sense_status(void)
+{
+    return current_sense_status_word(safety_adc_latched_mismatch_mask);
 }
 
 void safety_task_entry(ULONG initial_input)

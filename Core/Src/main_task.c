@@ -81,8 +81,8 @@ static ULONG g_launch_sequence_igniter_start_ticks = 0U;
 static ULONG g_launch_sequence_igniter_stop_ticks = 0U;
 static ULONG g_launch_sequence_holdoff_start_ticks = 0U;
 igniter_t igniter = {IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, IGNITER_FAULT_GPIO_Port, IGNITER_FAULT_Pin, 3};
-solenoid_t n2_solenoid = {NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, N2_SIG_GPIO_Port, N2_SIG_Pin, N2_FAULT_GPIO_Port, N2_FAULT_Pin, 2};
-solenoid_t n20_solenoid = {NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, N20_SIG_GPIO_Port, N20_SIG_Pin, N20_FAULT_GPIO_Port, N20_FAULT_Pin, 1};
+solenoid_t n2_solenoid = {NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, N2_FAULT_GPIO_Port, N2_FAULT_Pin, 2};
+solenoid_t n20_solenoid = {NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, N20_FAULT_GPIO_Port, N20_FAULT_Pin, 1};
 stepper_t stepper = {STEPPER_CTRL_GPIO_Port, STEPPER_CTRL_Pin, STEPPER_DIR_GPIO_Port, STEPPER_DIR_Pin, STEPPER_RESET_GPIO_Port, STEPPER_RESET_Pin, STEPPER_SLEEP_GPIO_Port, STEPPER_SLEEP_Pin, false, STEP_CW};
 
 static void publish_all_umbilical_statuses(void)
@@ -157,9 +157,7 @@ static void manual_stop_apply_locked(void)
     g_plumbing_retract_steps_remaining=0U;
     HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port,IGNITER_PIN_Pin,GPIO_PIN_RESET);
     HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port,NITROGEN_PIN_Pin,GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(N2_SIG_GPIO_Port,N2_SIG_Pin,GPIO_PIN_RESET);
     HAL_GPIO_WritePin(NITROUS_PIN_GPIO_Port,NITROUS_PIN_Pin,GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(N20_SIG_GPIO_Port,N20_SIG_Pin,GPIO_PIN_RESET);
     stepperStopAsleepImmediate(&stepper);
     fill_stop_locked(true,0);
     g_igniter_on=g_nitrogen_open=g_nitrous_open=0U;
@@ -175,9 +173,7 @@ void main_task_force_outputs_safe_off(void)
 
     HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(N2_SIG_GPIO_Port, N2_SIG_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(N20_SIG_GPIO_Port, N20_SIG_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
     stepperSleep(&stepper);
     if(!thread_comm_fill_visit(fill_stop_locked,0)) all_fill_outputs_off();
@@ -472,8 +468,9 @@ static uint8_t recovery_read_outputs(uint32_t *mask)
     if ((NITROUS_PIN_GPIO_Port->ODR & NITROUS_PIN_Pin) != 0U) value |= 4U;
     if ((BACKUP_VALVE_EN_GPIO_Port->ODR & BACKUP_VALVE_EN_Pin) != 0U) value |= 8U;
     if ((STEPPER_SLEEP_GPIO_Port->ODR & STEPPER_SLEEP_Pin) != 0U) value |= 16U;
-    if ((N2_SIG_GPIO_Port->ODR & N2_SIG_Pin) != 0U) value |= 32U;
-    if ((N20_SIG_GPIO_Port->ODR & N20_SIG_Pin) != 0U) value |= 64U;
+    /* Bits 32/64 (formerly the N2_SIG/N20_SIG ODR bits) stay reserved and
+     * zero: those pins are ribbon-cable inputs, never outputs (Schematic.pdf
+     * p.2 PB13/PB14, p.8 J6). Bits 2/4 are the real drives. */
     if ((N_FWD_EN_GPIO_Port->ODR & N_FWD_EN_Pin) != 0U) value |= 128U;
     if ((N_BCKWD_EN_GPIO_Port->ODR & N_BCKWD_EN_Pin) != 0U) value |= 256U;
     if ((P_FWD_EN_GPIO_Port->ODR & P_FWD_EN_Pin) != 0U) value |= 512U;
@@ -490,9 +487,7 @@ static uint8_t recovery_prepare_base(uint8_t desired)
     if (desired <= 1U) {
         HAL_GPIO_WritePin(IGNITER_PIN_GPIO_Port, IGNITER_PIN_Pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(NITROGEN_PIN_GPIO_Port, NITROGEN_PIN_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(N2_SIG_GPIO_Port, N2_SIG_Pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(NITROUS_PIN_GPIO_Port, NITROUS_PIN_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(N20_SIG_GPIO_Port, N20_SIG_Pin, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(BACKUP_VALVE_EN_GPIO_Port, BACKUP_VALVE_EN_Pin, GPIO_PIN_RESET);
         stepperSleep(&stepper);
         fill_stop_locked(true,0);

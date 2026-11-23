@@ -36,7 +36,7 @@ flowchart LR
     ADC1 --> DMA["DMA1 Ch1 normal, 3 words"]
     DMA -->|"TC IRQ"| ISR["HAL_ADC_ConvCpltCallback"]
     ISR -->|"igniter_sense_capture"| LATEST["latest igniter sample<br/>counts, time, sequence"]
-    ISR -->|"semaphore + frame"| SAFE["Safety task<br/>mismatch check (no abort)"]
+    ISR -->|"semaphore + frame"| SAFE["Safety task<br/>mismatch check (diagnostic only)"]
     FAULT -->|"read at turn-on"| MAIN["Main task<br/>commands, igniter, valves, fill drive"]
     DIE -->|"5 s"| TEMP["board_temperature_poll"]
   end
@@ -109,7 +109,7 @@ task starts exactly one scan, so the sample rate equals the loop rate: about
 | Processing | raw counts. Valid when not faulted and age ≤ 250 ms. Saturated at 0 or 4095. VDDA from VREFINT, valid 1620–3600 mV and age ≤ 6000 ms (`igniter_sense_math.h:88-134`) | compared with the expected output: closed 0–128 counts, open 256–4095 (`safety_task.c:31-42,266-276`) | same limits (`safety_task.c:44-55`) | `solenoidOn`/`igniterOn` refuse when the pin is low | factory calibration |
 | Units / calibration | counts and VDDA mV. Amperes are explicitly unsupported (`IGNITER_SENSE_FLAG_CURRENT_UNSUPPORTED`) | counts, uncalibrated | counts, uncalibrated | – | 0.01 °C |
 | SD save | none | none | none | none | none |
-| Network type | `AB_IGNITER_SENSE` (id 106291377, u32×12) | none. Only the internal mismatch mask | none | none | `BOARD_HEALTH` word 1 |
+| Network type | `AB_IGNITER_SENSE` (id 106291377, u32×12) | no samples. `BOARD_HEALTH` words 19–20 report the channel as untrusted plus the latched mismatch bit | same | none | `BOARD_HEALTH` word 1 |
 | Send rate | ≤ 5 Hz | – | – | – | 5 s; 200 ms when a new command refusal is pending (`board_health.c:31-33`) |
 | Reliability / priority | reliable Off, priority 0, GROUND_STATION (`config/sedsnet.json`) | – | – | – | Off, 0 |
 | Egress | `seds_router_log_bytes_ex(..., true)` from the telemetry thread (`igniter_sense.c:65-66`). CAN data band `0x105` (`board_can_priority.h`). Frames older than 1000 ms are dropped (`can_tx_queue.c:11,105-108`) | – | – | – | same |
@@ -145,7 +145,7 @@ never started or read.
 | Fill motion status | `AB_FILL_MOTION_STATUS_V2` (Ordered, 200, 56 B) | Reply to a version-2 query | snapshot including provenance and remaining ms of the 45 s window | `Core/Src/fill_settings.c:90-97`, `Core/Inc/fill_motion.h:9` |
 | Automatic abort | `ABORT` string | Once per abort epoch, retried at most 1/s | `SEDS_AUTO_ABORT_V1:<reason>` | `Core/Src/telemetry_thread.c:88-125` |
 | ADC start failure | `WARNING` | at most every 10 s | fixed text | `Core/Src/telemetry_thread.c:73-86` |
-| Health | `BOARD_HEALTH` (Off, 0) | 5 s, or 200 ms on a new refusal | uptime, watchdog, allocator, CAN TX/RX counters, last refusal (words 16–18), die temperature | `Core/Src/board_health.c:20-70` |
+| Health | `BOARD_HEALTH` (Off, 0) | 5 s, or 200 ms on a new refusal | uptime, watchdog, allocator, CAN TX/RX counters, last refusal (words 16–18), Hall current-sense status (words 19–20, tag `CSN1`: bits 0–3 N2O/N2/igniter/H-bridge untrusted, bit 8 mismatch abort compiled in, bits 16–18 mismatch mask latched since boot), die temperature | `Core/Src/board_health.c:20-70` |
 
 ### 3.3 Commands and acknowledgements
 
@@ -195,7 +195,7 @@ sequenceDiagram
 |---|---|---|---|
 | Heartbeat abort | no GS heartbeat for 5000 ms while Idle < state < Launch | checked about every 51 ms | `safety_task.c:23,301-332` |
 | Initial heartbeat abort | no heartbeat ever, for 5000 ms after entering an active state | same | `safety_task.c:334-347` |
-| Hall mismatch | 10 consecutive mismatching scans (about 0.5 s) set the counter limit, but the abort is **commented out** | none | `safety_task.c:25,350-375` |
+| Hall mismatch | 10 consecutive mismatching scans (about 0.5 s). Diagnostic only: the abort is behind the compile-time option `AB_HALL_MISMATCH_ABORT` (CMake, default OFF), which refuses to build while the channels are marked untrusted (`current_sense_trust.h`) | none | `safety_task.c:25,350-375` |
 | Overpressure abort | `ACTUATOR_COMMAND` 16 \| 0x80 from the VB or GS → automatic abort | immediate | `telemetry.c:290-293` |
 | Abort safe state | igniter, N2, N2O, backup valve and H-bridge enables low; stepper asleep. Statuses every 500 ms | main loop runs every 10 ticks while aborted | `main_task.c:167-188,631-652` |
 
@@ -249,24 +249,48 @@ All paths are in `GroundStation26/backend/src/`.
 
 No firmware was changed. Items are ordered by operational impact.
 
-1. **Hall mismatch protection is disabled.** The abort at 10 mismatches is
-   commented out (`Core/Src/safety_task.c:371-374`). The closed band of 0–128
-   counts cannot be met by the fitted analog chain: the ACS711 midpoint with
-   ×28 gain saturates (`docs/hall-current-sense-audit.md`). The check counts
-   mismatches and does nothing else.
+1. **Fixed (kept disabled on purpose): Hall mismatch protection.** The
+   commented-out abort is gone. The abort is now the compile-time option
+   `AB_HALL_MISMATCH_ABORT` (CMake option, default OFF) with
+   `SAFETY_ABORT_CURRENT_MISMATCH` (6) as its reason. The N2O/N2 ACS711 paths
+   saturate and the H-bridge Hall sensor is wired in parallel with the motor
+   (`docs/hall-current-sense-audit.md`); the igniter sensor runs a 5 V part
+   from 3V3. `Core/Inc/current_sense_trust.h` marks all four channels
+   untrusted, and the build fails if the abort is enabled while any channel it
+   acts on is still marked untrusted. The mismatch mask is still counted for
+   diagnostics and is reported, never acted on, in `BOARD_HEALTH` words 19–20
+   (tag `CSN1`). `AB_IGNITER_SENSE` keeps its `CURRENT_UNSUPPORTED` flag.
+   Tests: `tests/test_drive_pins_and_current_sense.py`,
+   `tests/test_board_health.py`.
 2. **Status reports a cached state, not hardware.** `UMBILICAL_STATUS` sends
    `g_nitrogen_open`, `g_nitrous_open` and `g_igniter_on`
    (`main_task.c:87-93`, `status_report_retry.h:17-27`). The VB instead reads
    registers back. Neither board proves physical valve position.
-3. **SIG pins are inputs but are written as outputs.** `N2_SIG` (PB13),
-   `N20_SIG` (PB14) and `IGNITER_SIG` (PB12) are configured as `GPIO_Input`
-   (`Core/Src/main.c:636-638`, `ActuationBoard.ioc:229-240`). The solenoid
-   driver and safe-off paths nevertheless call `HAL_GPIO_WritePin` on them
-   (`Drivers/sol_stuff/solenoid_driver.c:4,16,22`, `main_task.c:159-161,177-179`).
-   Recovery reports their ODR bits as outputs (`main_task.c:474-475`). An ODR
-   write on an input pin has no electrical effect. Either the pins are
-   feedback lines that firmware never reads, or the pin configuration is
-   wrong. Confirm against `Schematic.pdf`.
+3. **Fixed: SIG pins were written as outputs.** Checked against
+   `Schematic.pdf` (Altium, rev A, 2026-10-06) and `ActuationBoard.ioc`:
+   - p.2 (`STM32.SchDoc`): PB3 `N2_Valve_EN`, PB4 `N20_Valve_EN` and PB7
+     `Igniter_EN` are output ports. PB12 `Igniter_Sig`, PB13 `N2_Sig` and
+     PB14 `N20_Sig` are input ports (arrows into the MCU), like PB11
+     `General_Fault_Sig` and PB15 `Stepper_BCKWD_Sig`.
+   - p.3 (`Solenoid_Drive.SchDoc`): `N2_Valve_EN`/`N20_Valve_EN` → 100R →
+     2N7002 gate with a 10k pull-down (Q7/R25, Q4/R18) → LTV-827 opto →
+     IRFR9024 high-side switch (Q2/Q3).
+   - p.7 (`Igniter_Circuit.SchDoc`): `Igniter_EN` → 100R → 2N7002 (Q26, 10k
+     pull-down R72) → LTV-817 → IRFR5305 (Q24).
+   - p.8 (`Connectors.SchDoc`): the `*_Sig` nets only reach the J6 ribbon
+     cable (pins 7, 8, 9).
+   - The current-sense outputs are separate nets: `N2_ADC` PA1, `N20_ADC`
+     PA0, `Igniter_ADC` PA2, and the `*_FAULT` lines on PC1–PC3.
+
+   So the SIG lines are ribbon-cable inputs, neither drives nor current
+   sense, and the firmware already drove the real enables (`NITROGEN_PIN`
+   PB3, `NITROUS_PIN` PB4, `IGNITER_PIN` PB7). The solenoid driver, the
+   safe-off paths and recovery no longer write the SIG pins, and recovery no
+   longer reports their ODR bits (mask bits 32/64 stay reserved, always 0).
+   The drives are written low before `HAL_GPIO_Init` makes them outputs, and
+   their 10k gate pull-downs hold them off through reset, so nothing glitches
+   on. `tests/test_drive_pins_and_current_sense.py` checks the `.ioc`,
+   `main.h`, the init order and that no code writes a SIG pin.
 4. **Misleading warning text.** The ADC-start warning says "continuity sensing
    unavailable" (`telemetry_thread.c:81`). The AB ADC measures Hall current
    sense, not continuity.

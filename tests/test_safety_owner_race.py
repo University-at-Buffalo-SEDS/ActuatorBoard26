@@ -94,7 +94,8 @@ int main(int argc,char**argv){
  if(!strcmp(argv[1],"overpressure_motion")){
   /* Overpressure in Startup with retraction mid-motion and every output on. */
   interleave=0;assert(thread_comm_set_flight_state(ACTUATOR_FLIGHT_STATE_STARTUP)==TX_SUCCESS);
-  for(unsigned i=0;i<11;i++)ports[i].ODR=1;
+  /* Ports 2 and 4 are the N2_SIG/N20_SIG ribbon inputs: never outputs. */
+  for(unsigned i=0;i<11;i++)if(i!=2&&i!=4)ports[i].ODR=1;
   g_igniter_on=g_nitrogen_open=g_nitrous_open=1;g_launch_sequence_active=0;
   g_plumbing_retract_active=1;g_plumbing_retract_steps_remaining=500;
   g_fill_motion.active=true;g_fill_motion.active_action=1;

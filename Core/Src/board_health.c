@@ -3,6 +3,7 @@
 #include "board_temperature.h"
 #include "board_uptime.h"
 #include "board_watchdog.h"
+#include "current_sense_trust.h"
 #include "telemetry.h"
 #include "main.h"
 #include <stdint.h>
@@ -53,6 +54,8 @@ void board_health_poll(SedsRouter *router)
   words[16] = BOARD_REFUSAL_TAG; words[17] = refusal;
   words[18] = refusal_seen ? now - refusal_seen_ms : 0U;
   words[1] |= board_temperature_health_flags();
+  /* Hall current sense: untrusted channels, never acted on (current_sense_trust.h). */
+  words[19] = CURRENT_SENSE_STATUS_TAG; words[20] = safety_current_sense_status();
   if (!telemetry_router_enter()) { ++failures; return; }
   /* Static UInt32 schema + exact little-endian bytes: use the existing
    * bounded byte path without pulling every generic numeric converter in. */
