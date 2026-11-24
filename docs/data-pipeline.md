@@ -196,9 +196,33 @@ sequenceDiagram
   = 4250 ms, or the stored accepted-launch deadline (`thread_comm.h:31`,
   `main_task.c:326-332`, `thread_comm.c:131-134`). The igniter stays on for
   10 000 ms, followed by a 1500 ms restart holdoff (`main_task.c:48-52,334-369`).
-- Plumbing retract (stepper mode): 20 000 000 steps at a 30 µs period. The
-  timer counts at 1 MHz, so the step rate is 33.3 kHz (`main_task.c:55-58`).
-  Aux mode instead holds `BACKUP_VALVE_EN` for 45 s (`fill_motion.c:11-14`).
+- Plumbing (QD) retract, two drives (`fill_settings` mode; no saved record
+  means the factory stepper default):
+  - **Auxiliary** (how the QD retracts on the vehicle): holds
+    `BACKUP_VALVE_EN` (PD2) on for `FILL_DURATION_MS` = 45 s
+    (`fill_motion.h`, `fill_motion.c`). PD2 drives the backup-valve channel
+    (`Solenoid_Drive.SchDoc`: Q11 2N7002 → LTV-817 → IRFR9024 high side,
+    +12 V on the 2-pin P4). The 45 s is a deliberate overdrive: the QD
+    actuator's own limit switch cuts it off at the end of its travel, 20–30 s
+    on the hardware. The AB has no input from that switch (P4 carries only
+    the actuator's power) and no current sense on this channel. It ends the
+    retraction on its timer and reports it complete (`UMBILICAL_STATUS` 8 =
+    1, motion lifecycle complete) whether or not the switch tripped.
+  - **Legacy stepper**: `PLUMBING_RETRACT_MOTOR_STEPS` 200 000 ×
+    `PLUMBING_RETRACT_GEARBOX_RATIO` 100 = 20 000 000 STEP pulses at
+    `PLUMBING_RETRACT_STEP_PERIOD_US` 30 µs (`main_task.c:56-59`), through
+    the stepper's 100:1 gearbox, so it turns very slowly. Timing: SYSCLK
+    = HSI 16 MHz / PLLM 4 × PLLN 85 / PLLR 2 = 170 MHz, APB2 /1, so TIM1
+    clocks at 170 MHz. PSC 169 gives a 1 MHz count, and
+    `stepperStartMoveTimer` sets ARR = 29 (RCR 0, no one-pulse mode, no
+    DMA). That makes one 3 µs CH3N pulse on PB1 and one update interrupt
+    every 30 µs (33.3 kHz). The ISR counts the pulses down
+    (`stepper_driver.c`). 20 000 000 × 30 µs = **600 s**. The DRV8825's
+    MODE0–2 are tied to 3V3 (1/32 microstep) and its nFAULT drives only an
+    LED. The stepper has no limit-switch or end-stop input either, so it
+    ends only on the count, a Stop, an Abort or an epoch change. History:
+    40 000 at 80 µs (3.2 s), then 200 000 at 40 µs (8 s), then the ×100
+    gearbox factor at 30 µs (cd329ab).
 - Board-side latency from command receipt to output change: one telemetry
   loop plus one main-task pass, ≈ 1–2 ms.
 
