@@ -317,12 +317,14 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
       thread_comm_launch_refusal_count() != launch_refusals)
   {
     /* Tell the station why Launch was not taken. A stale stamp never becomes
-     * fresh again: acknowledge it so the retransmits stop; a transient refusal
-     * (busy owner, inhibit write) keeps the receipt withheld for a retry. */
+     * fresh again: refuse it for good (control_endpoint counts and
+     * acknowledges it) so the retransmits stop; a transient refusal (busy
+     * owner, inhibit write) keeps the receipt withheld for a retry. */
     const uint8_t reason = thread_comm_launch_last_refusal();
     if (reason != BOARD_REFUSAL_NONE) BOARD_REFUSAL_NOTE_PACKET(pkt, reason);
+    if (reason == BOARD_REFUSAL_STALE || reason == BOARD_REFUSAL_BELOW_FLOOR) return SEDS_PERMISSION_DENIED;
     g_command_queue_drop_count++;
-    return reason == BOARD_REFUSAL_STALE || reason == BOARD_REFUSAL_BELOW_FLOOR ? SEDS_OK : SEDS_ERR;
+    return SEDS_ERR;
   }
   if (admitted != TX_SUCCESS)
   {

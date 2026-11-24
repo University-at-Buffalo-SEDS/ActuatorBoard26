@@ -90,6 +90,8 @@ class ReliableRefusalAckTests(unittest.TestCase):
     def test_malformed_fill_request_is_acknowledged_not_answered(self): self.case('fill_malformed')
     def test_unknown_automatic_command_is_acknowledged_not_admitted(self): self.case('command_malformed')
     def test_full_command_queue_is_still_retried(self): self.case('command_queue_full')
+    def test_stale_launch_is_acknowledged_with_its_reason(self): self.case('launch_stale')
+    def test_busy_launch_reports_its_reason_and_is_retried(self): self.case('launch_busy_transient')
     def test_foreign_recovery_request_is_acknowledged(self): self.case('recovery_foreign')
     def test_malformed_recovery_request_is_acknowledged(self): self.case('recovery_malformed')
     def test_station_abort_fan_out_is_acknowledged_once(self): self.case('abort')

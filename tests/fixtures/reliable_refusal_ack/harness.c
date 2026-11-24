@@ -54,7 +54,14 @@ static uint8_t applied_state=255U;
 UINT thread_comm_apply_network_flight_state(uint8_t s,uint64_t t){(void)t;if(apply_result==TX_SUCCESS){applied++;applied_state=s;}return apply_result;}
 UINT thread_comm_admit_network(thread_comm_msg_t m,uint64_t t){(void)m;(void)t;if(admit_result==TX_SUCCESS)admitted++;return admit_result;}
 UINT thread_comm_admit_network_automatic(thread_comm_msg_t m,uint64_t t){(void)m;(void)t;if(admit_result==TX_SUCCESS)admitted++;return admit_result;}
-UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t m,const char*s,uint32_t l,uint64_t u,uint32_t k,uint32_t(*n)(void)){(void)m;(void)s;(void)l;(void)u;(void)k;(void)n;admitted++;return TX_SUCCESS;}
+/* The Launch owner: admits, or refuses with a board_refusal reason it reports
+ * through the two accessors (thread_comm.h) like the real owner. */
+static uint8_t launch_refuse_with,launch_last_refusal;static uint32_t launch_refusals;
+UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t m,const char*s,uint32_t l,uint64_t u,uint32_t k,uint32_t(*n)(void)){(void)m;(void)s;(void)l;(void)u;(void)k;(void)n;
+ if(launch_refuse_with){launch_last_refusal=launch_refuse_with;launch_refusals++;return TX_QUEUE_ERROR;}
+ admitted++;return TX_SUCCESS;}
+uint8_t thread_comm_launch_last_refusal(void){return launch_last_refusal;}
+uint32_t thread_comm_launch_refusal_count(void){return launch_refusals;}
 uint8_t thread_comm_launch_original_accepted(uint64_t t,const char*s,uint32_t l){(void)t;(void)s;(void)l;return 0U;}
 uint8_t thread_comm_request_automatic_abort(uint8_t o){(void)o;abort_requests++;return 1U;}
 UINT thread_comm_request_manual_abort(void){abort_requests++;return 1U;}
@@ -118,7 +125,7 @@ static unsigned deliver(uint32_t ty,uint32_t endpoint,const char*sender,const ui
  if(rx)*rx=r;
  return acks-before;
 }
-static void fresh_case(void){stale=aborted=false;admit_result=apply_result=TX_SUCCESS;applied=admitted=abort_requests=stores=0;status_frames=0;}
+static void fresh_case(void){stale=aborted=false;launch_refuse_with=launch_last_refusal=0;admit_result=apply_result=TX_SUCCESS;applied=admitted=abort_requests=stores=0;status_frames=0;}
 
 int main(int argc,char**argv){
  assert(argc==3);setbuf(stdout,NULL);
@@ -221,6 +228,28 @@ int main(int argc,char**argv){
   uint8_t cmd=0;admit_result=TX_QUEUE_ERROR;got=deliver(SEDS_DT_ACTUATOR_COMMAND,SEDS_EP_ACTUATOR_BOARD,"GS",&cmd,1,&rx);
   printf("queue-full command rx=%d acks=%u admitted=%u\n",rx,got,admitted);
   assert(got==0&&rx!=SEDS_OK&&admitted==0);refusals=g_reliable_refusal_count;
+ }else if(!strcmp(c,"launch_stale")){
+  /* A Launch refused for good (its stamp aged out): the reason reaches the
+   * station, the packet is acknowledged so the retransmits stop. */
+  uint8_t cmd=CMD_IGNITER_SEQUENCE;launch_refuse_with=BOARD_REFUSAL_STALE;
+  const uint32_t word=board_refusal_current();
+  got=deliver(SEDS_DT_ACTUATOR_COMMAND,SEDS_EP_ACTUATOR_BOARD,"GS",&cmd,1,&rx);
+  const uint32_t noted=board_refusal_current();
+  printf("stale Launch rx=%d acks=%u admitted=%u refusal=%08x\n",rx,got,admitted,(unsigned)noted);
+  assert(got==1&&rx==SEDS_OK&&admitted==0&&launch_refusals==1);
+  assert(noted!=word&&((noted>>8)&0xFFU)==CMD_IGNITER_SEQUENCE&&(noted&0xFFU)==BOARD_REFUSAL_STALE);
+ }else if(!strcmp(c,"launch_busy_transient")){
+  /* A Launch refused while the owner is busy: the reason reaches the
+   * station, the receipt stays withheld so the retransmit can be admitted. */
+  uint8_t cmd=CMD_IGNITER_SEQUENCE;launch_refuse_with=BOARD_REFUSAL_BUSY;
+  got=deliver(SEDS_DT_ACTUATOR_COMMAND,SEDS_EP_ACTUATOR_BOARD,"GS",&cmd,1,&rx);
+  const uint32_t noted=board_refusal_current();
+  printf("busy Launch rx=%d acks=%u admitted=%u refusal=%08x\n",rx,got,admitted,(unsigned)noted);
+  assert(got==0&&rx!=SEDS_OK&&admitted==0&&(noted&0xFFU)==BOARD_REFUSAL_BUSY);
+  refusals=g_reliable_refusal_count;
+  launch_refuse_with=0;got=deliver(SEDS_DT_ACTUATOR_COMMAND,SEDS_EP_ACTUATOR_BOARD,"GS",&cmd,1,&rx);
+  printf("retried Launch rx=%d acks=%u admitted=%u\n",rx,got,admitted);
+  assert(got==1&&rx==SEDS_OK&&admitted==1);
  }else if(!strcmp(c,"recovery_foreign")){
   uint8_t req[BOARD_RECOVERY_REQUEST_SIZE]={0};got=deliver(SEDS_DT_BOARD_RECOVERY_REQUEST,SEDS_EP_BOARD_RECOVERY,"VB",req,sizeof req,&rx);
   printf("foreign recovery request rx=%d acks=%u status=%u\n",rx,got,status_frames);

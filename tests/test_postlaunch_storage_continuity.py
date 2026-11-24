@@ -55,6 +55,7 @@ typedef int SedsResult;
 #define SEDS_ERR -1
 #define SEDS_BAD_ARG -2
 #define SEDS_IO -3
+#define SEDS_PERMISSION_DENIED -11
 #define SEDS_HANDLER_ERROR -4
 typedef struct{uint32_t ty;const char*sender;size_t sender_len;uint64_t timestamp;const uint8_t*payload;size_t payload_len;uint16_t time_epoch;}SedsPacketView;
 static unsigned g_command_queue_drop_count;
