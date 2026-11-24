@@ -231,6 +231,7 @@ static uint32_t launch_monotonic_tick(void){return (uint32_t)tx_time_get();}
  * retransmit arrives after the board re-anchored, within one exchange. */
 static UINT admit_timed_launch(const SedsPacketView*p) {
  const uint64_t stamp=board_stamp_of(p);int64_t age=0;const uint32_t before=launch_monotonic_tick();
+ /* No translatable age yet (a newer epoch not adopted): retried, not refused. */
  if(!g_router.r||!board_recovery_stamp_age(g_router.r,stamp,&age))return TX_QUEUE_ERROR;
  const uint32_t after=launch_monotonic_tick();
  if((uint32_t)(after-before)>1U)return TX_QUEUE_ERROR;
@@ -308,9 +309,21 @@ SedsResult Valve_Command_handler(const SedsPacketView *pkt, void *user)
   /* A full command queue must not block the telemetry worker indefinitely.
    * Blocking here prevents CAN draining, discovery, time sync, and all future
    * commands, which presents as the board becoming unresponsive over time. */
+  const uint32_t launch_refusals = thread_comm_launch_refusal_count();
   const UINT admitted=cmd_u8==CMD_IGNITER_SEQUENCE ? admit_timed_launch(pkt) :
       thread_comm_admit_network(msg,msg.timestamp_ms);
   if (admitted==THREAD_COMM_STALE_TIMESTAMP) return SEDS_OK;
+  if (admitted != TX_SUCCESS && cmd_u8 == CMD_IGNITER_SEQUENCE &&
+      thread_comm_launch_refusal_count() != launch_refusals)
+  {
+    /* Tell the station why Launch was not taken. A stale stamp never becomes
+     * fresh again: acknowledge it so the retransmits stop; a transient refusal
+     * (busy owner, inhibit write) keeps the receipt withheld for a retry. */
+    const uint8_t reason = thread_comm_launch_last_refusal();
+    if (reason != BOARD_REFUSAL_NONE) BOARD_REFUSAL_NOTE_PACKET(pkt, reason);
+    g_command_queue_drop_count++;
+    return reason == BOARD_REFUSAL_STALE || reason == BOARD_REFUSAL_BELOW_FLOOR ? SEDS_OK : SEDS_ERR;
+  }
   if (admitted != TX_SUCCESS)
   {
     g_command_queue_drop_count++;

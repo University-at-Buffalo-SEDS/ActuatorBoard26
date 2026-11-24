@@ -43,6 +43,10 @@ void thread_comm_launch_complete_owned(const thread_comm_launch_owner_t*owner);
 UINT thread_comm_admit_network_launch_original(thread_comm_msg_t msg,const char*sender,uint32_t sender_len);
 /* msg.timestamp_ms: packed (epoch, ms) stamp (board_stamp.h). observed_utc:
  * the network time in that stamp's time base (its ms plus its SEDSnet age). */
+/* The reason (board_refusal.h) the last new Launch was not admitted, 0 when none. */
+uint8_t thread_comm_launch_last_refusal(void);
+/* Counts every new Launch refused with a reason (pair with the call above). */
+uint32_t thread_comm_launch_refusal_count(void);
 UINT thread_comm_admit_network_launch_original_at(thread_comm_msg_t msg,const char*sender,uint32_t sender_len,uint64_t observed_utc,uint32_t observed_tick,uint32_t(*monotonic_now)(void));
 /* Network FLIGHT_STATE (contract set (a)): Startup, Idle, Fill, Armed, Launch,
  * Landed, Aborted and InFlight. RETIRED members are never on the wire: a

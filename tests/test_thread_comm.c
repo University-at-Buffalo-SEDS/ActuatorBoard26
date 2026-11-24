@@ -1,5 +1,7 @@
 #include "thread_comm.h"
 #include "board_refusal.h"
+#include "board_stamp.h"
+#include "board_commands.h"
 #include <assert.h>
 #include <stdbool.h>
 /* Queue/state-only unit: storage is already healthy, no commissioning is in
@@ -35,6 +37,8 @@ UINT tx_semaphore_get(TX_SEMAPHORE *semaphore, ULONG wait_option)
 { (void)wait_option; if (semaphore->count == 0U) return TX_NO_INSTANCE; semaphore->count--; return TX_SUCCESS; }
 UINT tx_semaphore_put(TX_SEMAPHORE *semaphore)
 { semaphore->count++; return TX_SUCCESS; }
+
+static uint32_t fixed_tick(void) { return 100U; }
 
 int main(void)
 {
@@ -79,6 +83,22 @@ int main(void)
     assert(board_refusal_current() >> 16 == 1U); /* an accepted command records nothing */
     thread_comm_msg_t drained;
     assert(thread_comm_receive(&drained, TX_NO_WAIT) == TX_SUCCESS && drained.cmd == 9U);
+
+    /* A Launch whose stamp is too old for its effect deadline (station stamp
+     * 14 s before the board's network time) is refused with a reason, not only
+     * by withholding its receipt. */
+    {
+        const uint32_t refusals = thread_comm_launch_refusal_count();
+        const thread_comm_msg_t launch = {.cmd = CMD_IGNITER_SEQUENCE, .timestamp_ms = board_stamp_pack(0U, 6000ULL)};
+        assert(thread_comm_admit_network_launch_original_at(launch, "GS", 2U, 20000ULL, 100U, fixed_tick) != TX_SUCCESS);
+        assert(thread_comm_launch_refusal_count() == refusals + 1U);
+        assert(thread_comm_launch_last_refusal() == BOARD_REFUSAL_STALE);
+        /* a stamp ahead of the board by more than the allowed 1 s: refused too */
+        const thread_comm_msg_t ahead = {.cmd = CMD_IGNITER_SEQUENCE, .timestamp_ms = board_stamp_pack(0U, 9000ULL)};
+        assert(thread_comm_admit_network_launch_original_at(ahead, "GS", 2U, 7000ULL, 100U, fixed_tick) != TX_SUCCESS);
+        assert(thread_comm_launch_refusal_count() == refusals + 2U);
+        assert(thread_comm_launch_last_refusal() == BOARD_REFUSAL_STALE);
+    }
 
     assert(thread_comm_set_shared_value(-42) == TX_SUCCESS);
     assert(thread_comm_get_shared_value() == -42);

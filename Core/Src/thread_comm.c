@@ -831,22 +831,46 @@ static uint8_t launch_deadline_locked(uint64_t stamp,uint64_t observed_utc,
  *out=remaining<0?now-(uint32_t)ticks:now+(uint32_t)ticks;return 1U;
 }
 
+/* Why a new Launch was not admitted (board_refusal.h), so the refusal is
+ * reported to the station instead of only withholding the receipt: a Launch
+ * refused for good (stale stamp) was otherwise retransmitted until it aged out
+ * with nothing on the board or the station saying why. */
+volatile uint8_t g_launch_last_refusal __attribute__((used));
+volatile uint32_t g_launch_refusal_count __attribute__((used));
+uint8_t thread_comm_launch_last_refusal(void){return g_launch_last_refusal;}
+uint32_t thread_comm_launch_refusal_count(void){return g_launch_refusal_count;}
+static uint8_t launch_refusal_locked(uint8_t network,uint64_t stamp,uint8_t deadline_ok){
+ if(g_command_admission_fault)return BOARD_REFUSAL_OWNER_FAULT;
+ if(g_thread_comm_abort)return BOARD_REFUSAL_ABORT;
+ if(g_recovery_pending||g_thread_comm_recovery_epoch==0U||g_thread_comm_recovery_epoch==UINT32_MAX)return BOARD_REFUSAL_RECOVERY_PENDING;
+ if(!persistent_store_controls_ready())return persistent_store_bootstrap_pending()?BOARD_REFUSAL_NOT_COMMISSIONED:BOARD_REFUSAL_STORE_NOT_READY;
+ if(g_fill_configuration_pending)return BOARD_REFUSAL_BUSY;
+ if(network&&!network_timestamp_allowed_locked(stamp))return BOARD_REFUSAL_BELOW_FLOOR;
+ if(network&&!deadline_ok)return BOARD_REFUSAL_STALE;
+ return BOARD_REFUSAL_INTERLOCK;
+}
 static UINT thread_comm_admit_launch_impl(thread_comm_msg_t msg,uint8_t network,const char*sender,uint32_t length,uint64_t observed_utc,uint32_t observed_tick,uint32_t(*monotonic_now)(void))
 {
  if(msg.cmd!=CMD_IGNITER_SEQUENCE||!launch_identity_valid(sender,length)||!g_thread_comm_initialized||
     tx_mutex_get(&g_thread_comm_state_mutex,TX_NO_WAIT)!=TX_SUCCESS)return TX_MUTEX_ERROR;
- UINT status=TX_QUEUE_ERROR;uint8_t newly_staged=0U;uint32_t deadline=0U;
+ UINT status=TX_QUEUE_ERROR;uint8_t newly_staged=0U;uint32_t deadline=0U;uint8_t refusal=BOARD_REFUSAL_NONE;
  if(g_accepted_launch.phase!=LAUNCH_NONE) {
   status=launch_same_original_locked(msg.timestamp_ms,sender,length)?TX_SUCCESS:TX_QUEUE_ERROR;
- } else if(g_thread_comm_recovery_epoch!=0U && g_thread_comm_recovery_epoch!=UINT32_MAX &&
+ } else {
+  const uint8_t ready=g_thread_comm_recovery_epoch!=0U && g_thread_comm_recovery_epoch!=UINT32_MAX &&
     g_launch_serial<UINT32_MAX-1U && !g_thread_comm_abort && !g_recovery_pending && !g_fill_configuration_pending &&
     !g_command_admission_fault && persistent_store_controls_ready() &&
-    (!network||(network_timestamp_allowed_locked(msg.timestamp_ms)&&launch_deadline_locked(msg.timestamp_ms,observed_utc,observed_tick,monotonic_now,&deadline)))) {
-  if(safety_launch_inhibit_locked()) {
+    (!network||network_timestamp_allowed_locked(msg.timestamp_ms));
+  const uint8_t deadline_ok=ready&&(!network||launch_deadline_locked(msg.timestamp_ms,observed_utc,observed_tick,monotonic_now,&deadline));
+  if(!deadline_ok) refusal=launch_refusal_locked(network,msg.timestamp_ms,0U);
+  else if(!safety_launch_inhibit_locked()) refusal=BOARD_REFUSAL_INTERLOCK;
+  else {
    const uint32_t slot=g_thread_comm_head,serial=g_launch_serial+1U;
    status=thread_comm_send_owned_nowait(msg);
    if(status==TX_SUCCESS){launch_accept_locked(msg.timestamp_ms,sender,length,slot,serial);g_accepted_launch.deadline=deadline;g_accepted_launch.deadline_valid=network;newly_staged=1U;}
+   else refusal=BOARD_REFUSAL_BUSY;
   }
+  if(refusal!=BOARD_REFUSAL_NONE){g_launch_last_refusal=refusal;g_launch_refusal_count++;}
  }
  if(tx_mutex_put(&g_thread_comm_state_mutex)!=TX_SUCCESS) {
   /* This call owns only its new candidate, never an earlier accepted one. */
