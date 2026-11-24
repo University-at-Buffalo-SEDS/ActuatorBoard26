@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "can_tx_queue.h"
+#include "can_link.h"
+#include "tx_api.h"
 unsigned mock_irq;
 void *telemetry_can_tx_allocate(size_t n) { assert(!mock_irq); return malloc(n); }
 void *telemetry_can_tx_allocate_priority(size_t n, uint8_t protected_control)
@@ -27,6 +29,7 @@ static uint32_t start_count;
 static uint32_t abort_count;
 static uint32_t fifo_full_reads_remaining;
 static uint32_t fifo_level_reads;
+static uint32_t latest_tx_buffer;
 
 static size_t dlc_len(uint32_t dlc)
 {
@@ -77,6 +80,7 @@ HAL_StatusTypeDef HAL_FDCAN_AddMessageToTxFifoQ(FDCAN_HandleTypeDef *h,
     assert(frame_count < sizeof(frames) / sizeof(frames[0]));
     frames[frame_count].header = *header;
     memcpy(frames[frame_count].data, data, dlc_len(header->DataLength));
+    latest_tx_buffer = 1U << (frame_count % 3U);
     frame_count++;
     return HAL_OK;
 }
@@ -86,6 +90,13 @@ HAL_StatusTypeDef HAL_FDCAN_GetRxMessage(FDCAN_HandleTypeDef *h, uint32_t fifo,
                                          FDCAN_RxHeaderTypeDef *header, uint8_t *data)
 { (void)h; (void)fifo; (void)header; (void)data; return HAL_ERROR; }
 uint32_t HAL_GetTick(void) { return tick_ms; }
+/* The ThreadX tick follows the HAL millisecond tick; SysTick sits at reload
+ * start so board_now_us() is exactly tick_ms * 1000. */
+SysTick_Type mock_systick = {.LOAD = 169999U, .VAL = 169999U};
+SCB_Type mock_scb;
+ULONG tx_time_get(VOID) { return tick_ms; }
+uint32_t HAL_FDCAN_GetLatestTxFifoQRequestBuffer(const FDCAN_HandleTypeDef *h)
+{ (void)h; return latest_tx_buffer; }
 
 static void receive(const uint8_t *data, size_t len, void *user)
 {
@@ -122,22 +133,25 @@ int main(void)
     assert(fifo_level_reads == reads_before_wait + 1U);
     fifo_full_reads_remaining = 0U;
 
-    can_bus_test_inject(3U, raw, sizeof(raw));
+    /* Link format v2: a short packet is one SINGLE-kind frame. */
+    const uint32_t single_id = can_link_id(3U, CAN_LINK_SINGLE);
+    can_bus_test_inject(single_id, raw, sizeof(raw));
     can_bus_process_rx();
     assert(callback_count == 1U);
     assert(received_len == sizeof(raw));
     assert(memcmp(received, raw, sizeof(raw)) == 0);
 
     /* SEDSNet bounds physical side frames to 128 bytes. A logical side frame
-     * can exceed the three-entry FIFO and must stream without truncation. */
+     * can exceed the three-entry FIFO and must stream without truncation.
+     * One board's fragments of one band arrive in submission order. */
     uint8_t large[128];
     for (size_t i = 0; i < sizeof(large); ++i) large[i] = (uint8_t)i;
     frame_count = 0U;
     assert(can_bus_send_large(large, sizeof(large), 3U) == HAL_OK);
     assert(frame_count > 1U);
-    for (size_t i = frame_count; i > 0U; --i)
+    for (size_t i = 0U; i < frame_count; ++i)
     {
-        const captured_frame_t *frame = &frames[i - 1U];
+        const captured_frame_t *frame = &frames[i];
         can_bus_test_inject(frame->header.Identifier, frame->data,
                             dlc_len(frame->header.DataLength));
     }
@@ -147,7 +161,7 @@ int main(void)
     assert(memcmp(received, large, sizeof(large)) == 0);
 
     const size_t before_flood = callback_count;
-    for (size_t i = 0; i < 200U; ++i) can_bus_test_inject(3U, raw, sizeof(raw));
+    for (size_t i = 0; i < 200U; ++i) can_bus_test_inject(single_id, raw, sizeof(raw));
     assert(can_bus_rx_dropped_frames() > 0U);
     can_bus_process_rx();
     assert(callback_count > before_flood);

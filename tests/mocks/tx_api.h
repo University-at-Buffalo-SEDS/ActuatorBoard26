@@ -21,6 +21,7 @@ typedef struct { int unused; } TX_BYTE_POOL;
 /* Match this board's real ThreadX tick frequency. */
 #define TX_TIMER_TICKS_PER_SECOND 1000U
 
+ULONG tx_time_get(VOID);
 UINT tx_mutex_create(TX_MUTEX *mutex, const char *name, UINT inherit);
 UINT tx_mutex_get(TX_MUTEX *mutex, ULONG wait_option);
 UINT tx_mutex_put(TX_MUTEX *mutex);

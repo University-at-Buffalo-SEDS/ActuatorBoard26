@@ -82,6 +82,7 @@ HAL_StatusTypeDef HAL_FDCAN_GetProtocolStatus(const FDCAN_HandleTypeDef *h,
 HAL_StatusTypeDef HAL_FDCAN_AbortTxRequest(FDCAN_HandleTypeDef *h,
                                            uint32_t buffers);
 uint32_t HAL_FDCAN_GetTxFifoFreeLevel(const FDCAN_HandleTypeDef *h);
+uint32_t HAL_FDCAN_GetLatestTxFifoQRequestBuffer(const FDCAN_HandleTypeDef *h);
 HAL_StatusTypeDef HAL_FDCAN_AddMessageToTxFifoQ(FDCAN_HandleTypeDef *h,
                                                 FDCAN_TxHeaderTypeDef *header,
                                                 uint8_t *data);
@@ -89,5 +90,15 @@ uint32_t HAL_FDCAN_GetRxFifoFillLevel(FDCAN_HandleTypeDef *h, uint32_t fifo);
 HAL_StatusTypeDef HAL_FDCAN_GetRxMessage(FDCAN_HandleTypeDef *h, uint32_t fifo,
                                          FDCAN_RxHeaderTypeDef *header, uint8_t *data);
 uint32_t HAL_GetTick(void);
+
+/* Cortex-M SysTick/SCB registers read by board_clock_us.h. A test that
+ * includes it defines mock_systick and mock_scb. */
+typedef struct { volatile uint32_t CTRL, LOAD, VAL, CALIB; } SysTick_Type;
+typedef struct { volatile uint32_t CPUID, ICSR; } SCB_Type;
+extern SysTick_Type mock_systick;
+extern SCB_Type mock_scb;
+#define SysTick (&mock_systick)
+#define SCB (&mock_scb)
+#define SCB_ICSR_PENDSTSET_Msk (1UL << 26U)
 void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state);
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin);
