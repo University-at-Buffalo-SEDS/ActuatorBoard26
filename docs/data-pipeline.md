@@ -202,15 +202,16 @@ sequenceDiagram
     `BACKUP_VALVE_EN` (PD2) on for `FILL_DURATION_MS` = 25 s
     (`fill_motion.h`, `fill_motion.c`). PD2 drives the backup-valve channel
     (`Solenoid_Drive.SchDoc`: Q11 2N7002 → LTV-817 → IRFR9024 high side,
-    +12 V on the 2-pin P4). The QD actuator's own limit switch ends its
-    travel shortly before the 25 s (the switch cuts the actuator's power, so
-    PD2 staying on to 25 s does nothing more). The AB has no input from that
+    +12 V on the 2-pin P4). The QD actuator's own limit switch cuts it off
+    at the end of its travel, expected within the 25 s; PD2 stays on to the
+    end of the timer. The AB has no input from that
     switch (P4 carries only the actuator's power) and no current sense on
     this channel. It ends the retraction on its timer and reports it complete
     (`UMBILICAL_STATUS` 8 = 1, motion lifecycle complete) whether or not the
     switch tripped. The operator checks by eye that the QD has disconnected;
     the GS has no QD-disconnect confirmation or gate (decision of 25 Nov
-    2026). Risk: travel was earlier quoted as 20–30 s; 25 s was chosen. An
+    2026). Risk: travel was earlier quoted as 20–30 s and has not been re-measured;
+    25 s was chosen. An
     actuator that needs more than 25 s stops short of its switch, and the
     visual check is what catches it. The 45 s overdrive this replaces is in
     the history.

@@ -7,10 +7,9 @@ enum { FILL_MODE_STEPPER=0,FILL_MODE_BRIDGE=1,FILL_MODE_AUX=2,FILL_MODE_UNKNOWN=
 enum { FILL_ACTION_NONE=0,FILL_ACTION_RETRACT=1,FILL_ACTION_EXTEND=2 };
 enum { FILL_MOTION_STARTED=0,FILL_MOTION_DUPLICATE=1,FILL_MOTION_BUSY=2,FILL_MOTION_STALE=3,FILL_MOTION_UNSUPPORTED=4,FILL_MOTION_FAULT=5 };
 /* How long the auxiliary drive holds BACKUP_VALVE_EN (PD2) for a QD retract.
- * The QD actuator's own limit switch ends its travel just before this (about
- * 20-25 s); the AB cannot sense that switch, so it stops on this timer and the
- * operator checks the QD by eye. If the actuator ever needs longer than 25 s
- * it is cut off short of its switch. The same window is the minimum-delay
+ * The AB cannot sense the QD actuator's limit switch: it stops on this timer
+ * and the operator checks the QD by eye. Travel was once quoted as 20-30 s; an
+ * actuator that needs more than 25 s is cut off short of its switch. The same window is the minimum-delay
  * provenance for either drive (fill_motion_status.c). */
 #define FILL_DURATION_MS UINT32_C(25000)
 /* last_source and source are packed (epoch, ms) stamps (board_stamp.h): a QD
