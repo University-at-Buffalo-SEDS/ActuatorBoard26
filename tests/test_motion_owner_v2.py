@@ -73,27 +73,27 @@ int main(int argc,char**argv){
  if(!strcmp(argv[1],"stop_wake")){wake_interleave=stop_in_wake;start_plumbing_retract(10000,thread_comm_manual_epoch());assert(wakes==1&&sleeps==1&&!pulses_started&&!driver_active&&thread_comm_get_abort());assert(snapshot().lifecycle!=FILL_PROVENANCE_COMPLETED);}
  else if(!strcmp(argv[1],"newer_wake")||!strcmp(argv[1],"stop_recover_newer")){wake_interleave=!strcmp(argv[1],"newer_wake")?newer_in_wake:stop_then_recover_newer_in_wake;start_plumbing_retract(10000,thread_comm_manual_epoch());assert(pulses_started==1&&wakes==2&&sleeps==0&&driver_active&&g_fill_provenance.source>10000);assert(snapshot().busy&&snapshot().lifecycle==FILL_PROVENANCE_ACTIVE);}
  else if(!strcmp(argv[1],"legacy_minimum")){
- start_selected_plumbing_retract(10000,thread_comm_manual_epoch());assert(pulses_started==1);FillMotionSnapshotV2 s=snapshot();assert(s.accepted_source==10000&&s.origin_epoch==s.current_epoch&&s.minimum_remaining_ms==45000&&s.busy);
+ start_selected_plumbing_retract(10000,thread_comm_manual_epoch());assert(pulses_started==1);FillMotionSnapshotV2 s=snapshot();assert(s.accepted_source==10000&&s.origin_epoch==s.current_epoch&&s.minimum_remaining_ms==25000&&s.busy);
  start_selected_plumbing_retract(10000,thread_comm_manual_epoch());start_selected_plumbing_retract(10001,thread_comm_manual_epoch());assert(wakes==1&&pulses_started==1&&g_fill_provenance.source==10000);
- tick=45100;assert(snapshot().minimum_remaining_ms==1&&snapshot().busy);tick=45101;assert(snapshot().minimum_remaining_ms==0&&snapshot().busy&&sleeps==0);
+ tick=25100;assert(snapshot().minimum_remaining_ms==1&&snapshot().busy);tick=25101;assert(snapshot().minimum_remaining_ms==0&&snapshot().busy&&sleeps==0);
  driver_active=false;service_plumbing_retract();s=snapshot();assert(!s.busy&&s.lifecycle==FILL_PROVENANCE_COMPLETED&&s.minimum_remaining_ms==0&&sleeps==1);
  invalidate_motion_provenance_locked(false,0);assert(snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
  }
  else if(!strcmp(argv[1],"legacy_early_complete")){
- start_selected_plumbing_retract(10000,thread_comm_manual_epoch());tick=200;driver_active=false;service_plumbing_retract();assert(snapshot().lifecycle==FILL_PROVENANCE_COMPLETED&&!snapshot().busy&&snapshot().minimum_remaining_ms==44901);
+ start_selected_plumbing_retract(10000,thread_comm_manual_epoch());tick=200;driver_active=false;service_plumbing_retract();assert(snapshot().lifecycle==FILL_PROVENANCE_COMPLETED&&!snapshot().busy&&snapshot().minimum_remaining_ms==24901);
  assert(thread_comm_request_manual_abort()==0);assert(snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
  }
  else if(!strcmp(argv[1],"aux_minimum")){
  mode=FILL_MODE_AUX;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());assert(gpio_on==1&&g_fill_motion.active&&g_fill_provenance.source==10000);
  tick=200;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());network_now=10001;start_selected_plumbing_retract(10001,thread_comm_manual_epoch());assert(gpio_on==1&&g_fill_motion.started_ms==100&&g_fill_provenance.source==10000);
- tick=45100;service_auxiliary_retract();assert(snapshot().lifecycle==FILL_PROVENANCE_COMPLETED&&!snapshot().busy&&snapshot().minimum_remaining_ms==1&&!ports[0].ODR);
- tick=45101;assert(snapshot().minimum_remaining_ms==0);assert(thread_comm_request_manual_abort()==0);assert(snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
+ tick=25100;service_auxiliary_retract();assert(snapshot().lifecycle==FILL_PROVENANCE_COMPLETED&&!snapshot().busy&&snapshot().minimum_remaining_ms==1&&!ports[0].ODR);
+ tick=25101;assert(snapshot().minimum_remaining_ms==0);assert(thread_comm_request_manual_abort()==0);assert(snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
  }
  else if(!strcmp(argv[1],"stop_before_service")){
- mode=FILL_MODE_AUX;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());tick=45101;assert(thread_comm_request_manual_abort()==0);service_auxiliary_retract();assert(!g_fill_motion.active&&!ports[0].ODR&&snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
+ mode=FILL_MODE_AUX;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());tick=25101;assert(thread_comm_request_manual_abort()==0);service_auxiliary_retract();assert(!g_fill_motion.active&&!ports[0].ODR&&snapshot().lifecycle==FILL_PROVENANCE_CANCELLED);
  }
  else if(!strcmp(argv[1],"timer_failure")){timer_ok=false;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());FillMotionSnapshotV2 s;assert(!main_task_fill_snapshot_v2(&s)&&s.lifecycle==FILL_PROVENANCE_FAULT&&!pulses_started);}
- else if(!strcmp(argv[1],"owner_busy")){g_thread_comm_state_mutex.locked=1;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());FillMotionSnapshotV2 s;assert(!main_task_fill_snapshot_v2(&s)&&s.mode==255&&s.minimum_remaining_ms==45000&&!wakes&&!pulses_started);g_thread_comm_state_mutex.locked=0;}
+ else if(!strcmp(argv[1],"owner_busy")){g_thread_comm_state_mutex.locked=1;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());FillMotionSnapshotV2 s;assert(!main_task_fill_snapshot_v2(&s)&&s.mode==255&&s.minimum_remaining_ms==25000&&!wakes&&!pulses_started);g_thread_comm_state_mutex.locked=0;}
  else if(!strcmp(argv[1],"query_wire")){
  mode=FILL_MODE_AUX;start_selected_plumbing_retract(10000,thread_comm_manual_epoch());uint8_t q[33]={2,0};q[4]=55;q[24]=77;uint32_t ep=SEDS_EP_ACTUATOR_BOARD;SedsPacketView p={.ty=SEDS_DT_AB_FILL_DRIVE_SETTINGS,.sender="GS",.sender_len=2,.endpoints=&ep,.num_endpoints=1,.payload=q,.payload_len=32,.timestamp=10000};SedsRouter*r=(SedsRouter*)&ep;
  assert(fill_settings_handle(r,&p)==SEDS_OK&&reported_type==SEDS_DT_AB_FILL_MOTION_STATUS_V2&&reported_count==56&&reply[0]==2&&reply[1]==0&&reply[4]==55&&reply[24]==77&&reply[32]==1&&reply[33]==1&&reply[34]==1&&reply[35]==1&&reply[40]==0x10&&reply[41]==0x27&&reply[52]==1);
@@ -103,7 +103,7 @@ int main(int argc,char**argv){
  q[0]=2;q[1]=1;unsigned before=reports;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);q[1]=0;
  p.payload_len=31;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);p.payload_len=33;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG&&reports==before);p.payload_len=32;
  q[3]=1;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG);q[3]=0;q[4]=0;assert(fill_settings_handle(r,&p)==SEDS_BAD_ARG);q[4]=55;p.sender="PB";assert(fill_settings_handle(r,&p)==SEDS_PERMISSION_DENIED);p.sender="GS";
- tick=45101;service_auxiliary_retract();assert(fill_settings_handle(r,&p)==0&&reply[34]==2&&reply[33]==0&&!reply[48]&&!reply[49]&&!reply[50]&&!reply[51]);
+ tick=25101;service_auxiliary_retract();assert(fill_settings_handle(r,&p)==0&&reply[34]==2&&reply[33]==0&&!reply[48]&&!reply[49]&&!reply[50]&&!reply[51]);
  assert(thread_comm_request_manual_abort()==0);assert(fill_settings_handle(r,&p)==0&&reply[34]==3&&reply[52]!=reply[20]);
  assert(gpio_on==1&&wakes==0&&pulses_started==0);
  }
@@ -114,10 +114,10 @@ int main(int argc,char**argv){
  mode=FILL_MODE_AUX;network_now=UINT64_C(1794183589988);settings_cutoff=board_stamp_pack(0,network_now-60000U);
  const uint64_t before=board_stamp_pack(0,network_now);
  start_selected_plumbing_retract(before,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==before);
- tick=45100;service_auxiliary_retract();assert(!g_fill_motion.active);
+ tick=25100;service_auxiliary_retract();assert(!g_fill_motion.active);
  stamp_fixture_step(network_now-UINT64_C(14400000));network_now+=300U;
  const uint64_t after=board_stamp_pack(1,network_now-200U);
- tick=45200;start_selected_plumbing_retract(after,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==after&&gpio_on==2);
+ tick=25200;start_selected_plumbing_retract(after,thread_comm_manual_epoch());assert(g_fill_motion.active&&g_fill_provenance.source==after&&gpio_on==2);
  tick=90300;service_auxiliary_retract();assert(!g_fill_motion.active);
  /* The old-base QD never starts again; neither does a stale new-base one. */
  tick=90400;start_selected_plumbing_retract(before,thread_comm_manual_epoch());assert(!g_fill_motion.active);

@@ -9,17 +9,17 @@ class MotionStatusV2Tests(unittest.TestCase):
 #include "fill_motion.h"
 #include <assert.h>
 #include <stdint.h>
-int main(void){FillMotionProvenance p={0};assert(fill_motion_provenance_remaining(&p,45000)==45000);
+int main(void){FillMotionProvenance p={0};assert(fill_motion_provenance_remaining(&p,25000)==25000);
  fill_motion_provenance_start(&p,10000,2,FILL_ACTION_RETRACT,UINT32_MAX-1000U);assert(p.lifecycle==1);
- assert(fill_motion_provenance_remaining(&p,UINT32_MAX-1000U)==45000);assert(fill_motion_provenance_remaining(&p,(uint32_t)(UINT32_MAX-1000U+44999U))==1);assert(fill_motion_provenance_remaining(&p,(uint32_t)(UINT32_MAX-1000U+45000U))==0);
+ assert(fill_motion_provenance_remaining(&p,UINT32_MAX-1000U)==25000);assert(fill_motion_provenance_remaining(&p,(uint32_t)(UINT32_MAX-1000U+24999U))==1);assert(fill_motion_provenance_remaining(&p,(uint32_t)(UINT32_MAX-1000U+25000U))==0);
  fill_motion_provenance_complete(&p);assert(p.lifecycle==2&&fill_motion_provenance_remaining(&p,0)==0); /* satisfied never rolls back */
- fill_motion_provenance_cancel(&p,false);assert(p.lifecycle==3&&fill_motion_provenance_remaining(&p,90000)==45000);fill_motion_provenance_cancel(&p,true);assert(p.lifecycle==4);
- uint64_t bad[]={0,UINT64_MAX};for(unsigned i=0;i<2;i++){fill_motion_provenance_start(&p,bad[i],2,1,0);fill_motion_provenance_complete(&p);assert(p.lifecycle==0&&fill_motion_provenance_remaining(&p,90000)==45000);}
+ fill_motion_provenance_cancel(&p,false);assert(p.lifecycle==3&&fill_motion_provenance_remaining(&p,90000)==25000);fill_motion_provenance_cancel(&p,true);assert(p.lifecycle==4);
+ uint64_t bad[]={0,UINT64_MAX};for(unsigned i=0;i<2;i++){fill_motion_provenance_start(&p,bad[i],2,1,0);fill_motion_provenance_complete(&p);assert(p.lifecycle==0&&fill_motion_provenance_remaining(&p,90000)==25000);}
  uint32_t epochs[]={0,UINT32_MAX};for(unsigned i=0;i<2;i++){fill_motion_provenance_start(&p,10000,epochs[i],1,0);fill_motion_provenance_complete(&p);assert(p.lifecycle==0);}
- fill_motion_provenance_start(&p,10001,2,1,100);fill_motion_provenance_complete(&p);assert(p.lifecycle==2&&fill_motion_provenance_remaining(&p,200)==44900); /* early legacy completion cannot imply45s */
- assert(fill_motion_provenance_remaining(&p,45100)==0);
- fill_motion_provenance_start(&p,10002,2,1,101);assert(fill_motion_provenance_remaining(&p,100)==45000);assert(fill_motion_provenance_remaining(&p,45100)==1);assert(fill_motion_provenance_remaining(&p,45101)==0);
- fill_motion_provenance_start(&p,10002,2,2,50000);assert(p.action==2&&p.lifecycle==1&&fill_motion_provenance_remaining(&p,50000)==45000);
+ fill_motion_provenance_start(&p,10001,2,1,100);fill_motion_provenance_complete(&p);assert(p.lifecycle==2&&fill_motion_provenance_remaining(&p,200)==24900); /* early legacy completion cannot imply the 25 s window */
+ assert(fill_motion_provenance_remaining(&p,25100)==0);
+ fill_motion_provenance_start(&p,10002,2,1,101);assert(fill_motion_provenance_remaining(&p,100)==25000);assert(fill_motion_provenance_remaining(&p,25100)==1);assert(fill_motion_provenance_remaining(&p,25101)==0);
+ fill_motion_provenance_start(&p,10002,2,2,50000);assert(p.action==2&&p.lifecycle==1&&fill_motion_provenance_remaining(&p,50000)==25000);
  return 0;}
 '''
   with tempfile.TemporaryDirectory()as tmp:

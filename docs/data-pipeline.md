@@ -155,7 +155,7 @@ never started or read.
 |---|---|---|---|---|
 | Output state | `UMBILICAL_STATUS` (Ordered, 200) | Immediately after each change. All four are published every 500 ms (`UMBILICAL_STATUS_PERIOD_TICKS`). Failed reports retry every 100 ms with the latest cached value | `[cmd_id, 0/1]`. IDs: 7 igniter, 8 plumbing retracted, 9 N2 open, 10 N2O open. The state is the **cached software state** (`g_igniter_on` and the others), not a register readback. Submitted at once on the calling task, stamped by router network time (`telemetry.c:983-1013`) | `main_task.c:47,87-109`, `Core/Inc/status_report_retry.h:17-41` |
 | Fill drive status | `AB_FILL_DRIVE_STATUS` (Ordered, 200, 40 B) | Reply to each `AB_FILL_DRIVE_SETTINGS` v1 query or set. Result retries every 100 ms until accepted | result, mode, epoch, busy, remaining ms, identity | `Core/Src/fill_settings.c:98-111,198-215` |
-| Fill motion status | `AB_FILL_MOTION_STATUS_V2` (Ordered, 200, 56 B) | Reply to a version-2 query | snapshot including provenance and remaining ms of the 45 s window | `Core/Src/fill_settings.c:90-97`, `Core/Inc/fill_motion.h:9` |
+| Fill motion status | `AB_FILL_MOTION_STATUS_V2` (Ordered, 200, 56 B) | Reply to a version-2 query | snapshot including provenance and remaining ms of the 25 s window | `Core/Src/fill_settings.c:90-97`, `Core/Inc/fill_motion.h:9` |
 | Automatic abort | `ABORT` string | Once per abort epoch, retried at most 1/s | `SEDS_AUTO_ABORT_V1:<reason>` | `Core/Src/telemetry_thread.c:88-125` |
 | ADC start failure | `WARNING` | at most every 10 s | fixed text | `Core/Src/telemetry_thread.c:73-86` |
 | Health | `BOARD_HEALTH` (Off, 0) | 5 s, or 200 ms on a new refusal | uptime, watchdog, allocator, CAN TX/RX counters, last refusal (words 16–18), Hall current-sense status (words 19–20, tag `CSN1`: bits 0–3 N2O/N2/igniter/H-bridge untrusted, bit 8 mismatch abort compiled in, bits 16–18 mismatch mask latched since boot), die temperature | `Core/Src/board_health.c:20-70` |
@@ -199,15 +199,24 @@ sequenceDiagram
 - Plumbing (QD) retract, two drives (`fill_settings` mode; no saved record
   means the factory stepper default):
   - **Auxiliary** (how the QD retracts on the vehicle): holds
-    `BACKUP_VALVE_EN` (PD2) on for `FILL_DURATION_MS` = 45 s
+    `BACKUP_VALVE_EN` (PD2) on for `FILL_DURATION_MS` = 25 s
     (`fill_motion.h`, `fill_motion.c`). PD2 drives the backup-valve channel
     (`Solenoid_Drive.SchDoc`: Q11 2N7002 → LTV-817 → IRFR9024 high side,
-    +12 V on the 2-pin P4). The 45 s is a deliberate overdrive: the QD
-    actuator's own limit switch cuts it off at the end of its travel, 20–30 s
-    on the hardware. The AB has no input from that switch (P4 carries only
-    the actuator's power) and no current sense on this channel. It ends the
-    retraction on its timer and reports it complete (`UMBILICAL_STATUS` 8 =
-    1, motion lifecycle complete) whether or not the switch tripped.
+    +12 V on the 2-pin P4). The QD actuator's own limit switch ends its
+    travel shortly before the 25 s (the switch cuts the actuator's power, so
+    PD2 staying on to 25 s does nothing more). The AB has no input from that
+    switch (P4 carries only the actuator's power) and no current sense on
+    this channel. It ends the retraction on its timer and reports it complete
+    (`UMBILICAL_STATUS` 8 = 1, motion lifecycle complete) whether or not the
+    switch tripped. The operator checks by eye that the QD has disconnected;
+    the GS has no QD-disconnect confirmation or gate (decision of 25 Nov
+    2026). Risk: travel was earlier quoted as 20–30 s; 25 s was chosen. An
+    actuator that needs more than 25 s stops short of its switch, and the
+    visual check is what catches it. The 45 s overdrive this replaces is in
+    the history.
+    The same `FILL_DURATION_MS` is the minimum-delay window in the motion
+    provenance (`fill_motion_status.c`) for either drive. The stepper's own
+    move below is unchanged.
   - **Legacy stepper**: `PLUMBING_RETRACT_MOTOR_STEPS` 200 000 ×
     `PLUMBING_RETRACT_GEARBOX_RATIO` 100 = 20 000 000 STEP pulses at
     `PLUMBING_RETRACT_STEP_PERIOD_US` 30 µs (`main_task.c:56-59`), through

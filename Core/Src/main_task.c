@@ -145,7 +145,7 @@ static uint32_t fill_monotonic_ms(void)
 }
 static uint32_t fill_minimum_start_ms(void)
 {
- /* Next tick rounded upward prevents a sub-tick early45s readiness proof. */
+ /* Next tick rounded upward prevents a sub-tick early FILL_DURATION_MS readiness proof. */
  return (uint32_t)((((uint64_t)tx_time_get()+1U)*1000U+TX_TIMER_TICKS_PER_SECOND-1U)/TX_TIMER_TICKS_PER_SECOND);
 }
 
@@ -278,7 +278,7 @@ static uint8_t start_selected_plumbing_retract(uint64_t source,uint32_t command_
 #endif
  FillStart request={.source=source,.epoch=command_epoch,.fresh=fresh,.result=FILL_MOTION_UNSUPPORTED,.reason=BOARD_REFUSAL_ASK_OWNER};
  (void)thread_comm_fill_visit_epoch(source,start_aux_locked,&request);
- /* No early completed status. Repeated active requests cannot extend45s. */
+ /* No early completed status. Repeated active requests cannot extend FILL_DURATION_MS. */
  if(request.result==FILL_MOTION_STARTED)(void)publish_umbilical_status(CMD_RETRACT_PLUMBING,0U);
  return fill_refusal(&request,source,command_epoch);
 }
@@ -303,7 +303,7 @@ static void service_legacy_locked(bool blocked,uint32_t epoch,void*context){
  if(!g_plumbing_retract_active)return;
  if(blocked||epoch!=g_fill_provenance.origin_epoch){stepperSleep(&stepper);g_plumbing_retract_active=0U;g_plumbing_retract_steps_remaining=0U;fill_motion_provenance_cancel(&g_fill_provenance,false);return;}
  if(!stepperIsMoveActive(&stepper)){
-  /* Existing legacy completion policy; no new45s torque release is introduced. */
+  /* Existing legacy completion policy; no new timed torque release is introduced. */
   stepperSleep(&stepper);g_plumbing_retract_active=0U;g_plumbing_retract_steps_remaining=0U;fill_motion_provenance_complete(&g_fill_provenance);
  }
  (void)fill_motion_provenance_remaining(&g_fill_provenance,fill_monotonic_ms());
@@ -534,7 +534,7 @@ static void recovery_finish_owner(void)
     recovery_finish_base();
     if (recovery_fill_rearm_ready()) g_fill_drive_fault = false;
     /* Prior source/action/epoch remains cancelled; only a new accepted move
-     * can establish a new minimum45 token or a completed motion. */
+     * can establish a new minimum-window token or a completed motion. */
 }
 
 /* Called under state owner after protocol/generation/epoch/freshness checks.
